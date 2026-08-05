@@ -184,8 +184,8 @@
                                     </div>
                                 </section>
 
-                                <!-- 模块分析 -->
-                                <section>
+                                <!-- 模块分析 (如果有数据则渲染) -->
+                                <section v-if="settings.modules && settings.modules.length > 0">
                                     <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
                                         <i class="fas fa-chart-bar text-sky-600"></i> 行业核心模块剖析 <span class="text-sm font-medium text-slate-400 capitalize">Industry Modules Analysis</span>
                                     </h2>
@@ -211,7 +211,7 @@
                                                 
                                                 <div v-if="getModuleData(module)?.content" class="text-slate-700 text-sm leading-loose text-justify mb-6 flex-1" v-html="highlightText(getModuleData(module).content, getModuleData(module).deconstructedIntents)"></div>
                                                 <div v-else class="text-amber-600 font-bold text-sm leading-loose text-justify mb-6 flex-1">
-                                                    <i class="fas fa-exclamation-triangle"></i> 大模型未正确返回该模块的数据，可能因抓取超时跳过。
+                                                    <i class="fas fa-exclamation-triangle"></i> 大模型未正确返回该模块格式化数据，详情请参阅顶部的“执行摘要”。
                                                 </div>
 
                                                 <!-- 来源 -->
@@ -229,8 +229,8 @@
                                     </div>
                                 </section>
 
-                                <!-- 核心生态 -->
-                                <section>
+                                <!-- 核心生态 (如果有数据则渲染) -->
+                                <section v-if="settings.coreWebsites && settings.coreWebsites.length > 0">
                                     <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
                                         <i class="fas fa-globe text-sky-600"></i> 核心竞品生态动向 <span class="text-sm font-medium text-slate-400 capitalize">Ecosystem Dynamics</span>
                                     </h2>
@@ -243,7 +243,7 @@
                                             </div>
                                             <div class="md:w-3/4 flex flex-col border-l border-slate-200 md:pl-6">
                                                 <div class="text-slate-700 text-sm leading-loose text-justify mb-6 whitespace-pre-wrap">
-                                                    {{ getWebsiteData(site)?.content || '大模型响应缺省，未成功生成此版块数据。' }}
+                                                    {{ getWebsiteData(site)?.content || '大模型未返回分离的动向数据，详情可能已合并至摘要中。' }}
                                                 </div>
                                                 <div v-if="getWebsiteData(site)?.sources?.length" class="mt-auto bg-white border border-slate-200 p-4 rounded-md">
                                                     <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 flex items-center gap-1"><i class="fas fa-link"></i> 情报来源</div>
@@ -260,7 +260,7 @@
                                 </section>
 
                                 <!-- ECharts 可视化图表 -->
-                                <section>
+                                <section v-show="hasValidChartData()">
                                      <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
                                         <i class="fas fa-chart-line text-sky-600"></i> 数据分布图谱 <span class="text-sm font-medium text-slate-400 capitalize">Data Distribution</span>
                                     </h2>
@@ -546,6 +546,7 @@
                         <div class="flex justify-between"><span>[Compute] 宏观趋势专业研判</span> <span :class="{'text-green-600 font-bold': genProgress > 70}">{{ genProgress > 70 ? 'OK' : '...' }}</span></div>
                         <div class="flex justify-between"><span>[Output] 专业研报文档生成</span> <span :class="{'text-green-600 font-bold': genProgress > 95}">{{ genProgress > 95 ? 'OK' : '...' }}</span></div>
                     </div>
+                    <p v-if="genProgress >= 40 && genProgress < 95" class="text-[10px] text-amber-500 mt-4 text-center animate-pulse"><i class="fas fa-info-circle"></i> 高级推理模型计算中，可能耗时1-3分钟，请耐心等待...</p>
                 </div>
             </div>
 
@@ -612,24 +613,29 @@
                 try {
                     const response = await fetch(url, options);
                     const responseText = await response.text();
-                    let result;
-                    try { result = responseText ? JSON.parse(responseText) : {}; } 
-                    catch (e) { throw new Error(`API 格式错误 (HTTP ${response.status})`); }
                     
-                    if (!response.ok || result.error) {
-                        const errMsg = result.error?.message || result.message || 'API Error';
-                        if ([400, 401, 403].includes(response.status)) {
+                    if (!response.ok) {
+                        let errMsg = `HTTP Error ${response.status}`;
+                        try {
+                            const errJson = JSON.parse(responseText);
+                            errMsg = errJson.error?.message || errJson.message || errMsg;
+                        } catch (e) {
+                            errMsg = responseText.substring(0, 100);
+                        }
+                        
+                        if ([400, 401, 403, 404].includes(response.status)) {
                             if (/API key not valid|authentication|API key|Auth/i.test(errMsg)) {
                                 throw new Error("大模型 API Key 无效或未授权，请检查【研报模型配置】中的密钥！");
                             }
-                            throw new Error(`参数异常: ${errMsg}`);
+                            throw new Error(`参数异常/模型不存在: ${errMsg}`);
                         }
-                        if (i === maxRetries - 1) throw new Error(`请求失败: ${errMsg}`);
+                        if (i === maxRetries - 1) throw new Error(`服务器异常: ${errMsg}`);
                         throw new Error("Trigger retry");
                     }
-                    return result;
+                    
+                    return JSON.parse(responseText);
                 } catch (error) {
-                    if (i === maxRetries - 1 || error.message.includes("无效") || error.message.includes("参数异常")) throw error;
+                    if (i === maxRetries - 1 || error.message.includes("无效") || error.message.includes("参数异常/模型不存在")) throw error;
                 }
                 await new Promise(resolve => setTimeout(resolve, delays[i]));
             }
@@ -688,6 +694,10 @@
                         const r = todayReport.value.moduleData?.find(d => d.moduleId === m.name || d.moduleId === m.id);
                         return { name: m.name, value: r?.deconstructedIntents?.length || 0 };
                     });
+                    
+                    const hasData = data.some(d => d.value > 0);
+                    if(!hasData) return;
+                    
                     myChart.setOption({
                         tooltip: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 8, borderColor: '#e2e8f0', textStyle: {color: '#1e293b'} },
                         xAxis: { type: 'category', data: data.map(d=>d.name), axisLabel: { interval: 0, fontSize: 11, color: '#64748b', fontWeight: 'bold' }, axisLine: {lineStyle: {color: '#e2e8f0'}} },
@@ -695,6 +705,15 @@
                         series: [{ data: data.map(d=>d.value), type: 'bar', itemStyle: { color: '#0284c7', borderRadius: [4,4,0,0] }, barMaxWidth: 60 }]
                     });
                 };
+                
+                const hasValidChartData = () => {
+                   if (!todayReport.value || !settings.modules) return false;
+                   return settings.modules.some(m => {
+                       const r = todayReport.value.moduleData?.find(d => d.moduleId === m.name || d.moduleId === m.id);
+                       return r?.deconstructedIntents?.length > 0;
+                   });
+                };
+
                 watch([activeTab, todayReport], renderChart);
                 window.addEventListener('resize', () => myChart?.resize());
 
@@ -804,6 +823,7 @@
                                 endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
                             }
 
+                            // 移除强制要求输出 JSON，使用自然语言强调。因为部分兼容的 Proxy 如果遇到 response_format 会报错 400 Bad Request
                             const p = `你是顶尖商业分析师。今天:${todayStr}。
 基于强大的知识库和推理能力，深度洞察以下板块:
 
@@ -823,7 +843,11 @@ ${wPrompt}
                             
                             const res = await fetchWithRetry(endpoint, {
                                 method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
-                                body: JSON.stringify({ model: settings.deepseekModel || "deepseek-v4-pro", messages:[{role:'user',content:p}], response_format:{type:'json_object'} })
+                                body: JSON.stringify({ 
+                                    model: settings.deepseekModel || "deepseek-v4-pro", 
+                                    messages: [{role:'user', content: p}]
+                                    // 删除了 response_format:{type:'json_object'} 以提供代理接口最大兼容性
+                                })
                             });
                             text = res.choices?.[0]?.message?.content;
                         } else {
@@ -855,6 +879,7 @@ ${wPrompt}
                         
                         let data;
                         try { 
+                            // 终极托底解析：剥离 <think> 推理过程和首尾的 Markdown 标记
                             let cleanText = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
                             cleanText = cleanText.replace(/```json/g,'').replace(/```/g,'').trim();
                             const firstBrace = cleanText.indexOf('{');
@@ -863,14 +888,24 @@ ${wPrompt}
                                 cleanText = cleanText.substring(firstBrace, lastBrace + 1);
                             }
                             data = JSON.parse(cleanText); 
+                            
+                            // 校验格式是否彻底损坏
+                            if (!data.summary && !data.moduleData && !data.websiteData) {
+                                throw new Error("JSON结构完全不符合标准。");
+                            }
                         } catch(e) { 
-                            console.error("Original text from model:", text);
-                            throw new Error("大模型返回的数据格式异常，无法解析为 JSON！请重试。"); 
+                            console.error("JSON解析彻底失败，强行托底保存原文:", text);
+                            // 终极托底：即使 JSON 碎了，也把大模型的原文抢救下来塞进 Summary 里，绝不让页面空白！
+                            data = {
+                                summary: "【系统提示：大模型返回的内容格式异常，无法渲染卡片，强制提取的原文如下】\n\n" + text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim(),
+                                moduleData: [],
+                                websiteData: []
+                            };
                         }
                         
                         clearInterval(timer); genProgress.value = 98;
                         await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), {
-                            date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
+                            date: todayStr, timestamp: Date.now(), summary: data.summary || "生成成功，但未提供摘要。", moduleData: data.moduleData||[], websiteData: data.websiteData||[]
                         });
                         logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
                         genProgress.value = 100;
@@ -975,6 +1010,7 @@ ${wPrompt}
                     isConfigError, // 导出错误标记
                     todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
                     highlightText, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
+                    hasValidChartData,
                     currentMonthStr, changeMonth, calendarFirstDay, calendarDays, selectDate,
                     searchQuery, historyPage, historyTotalPages, paginatedReports,
                     logsPage, logsTotalPages, paginatedLogs, formatTime,
