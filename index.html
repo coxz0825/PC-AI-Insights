@@ -897,11 +897,27 @@
                     isSaving.value = true;
                     try {
                         const payload = JSON.parse(JSON.stringify(settings));
-                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), payload);
+                        
+                        // 采用 setDoc 配合 merge: true，并增加超时机制防止假死
+                        const saveTask = setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), payload, { merge: true });
+                        
+                        await Promise.race([
+                            saveTask,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 8000))
+                        ]);
+
                         logAction('更新配置', userName.value, '管理员全量保存系统策略');
                         Swal.fire({icon:'success', title:'生效', text:'AI策略与安防规则已成功部署', timer:1500, showConfirmButton:false});
-                    } catch(e) { Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'}); }
-                    isSaving.value = false;
+                    } catch(e) { 
+                        console.error("保存失败:", e);
+                        if (e.message === "TIMEOUT") {
+                            Swal.fire({icon:'error', title:'保存请求超时', html:'可能是以下原因导致：<br/>1. 未在 Firebase 控制台点击<b>创建 Firestore 数据库</b><br/>2. 网络被拦截，无法连接数据库'});
+                        } else {
+                            Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'});
+                        }
+                    } finally {
+                        isSaving.value = false;
+                    }
                 };
 
                 return {
