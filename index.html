@@ -75,6 +75,11 @@
                             <input type="password" v-model="loginForm.pwd" placeholder="系统验证口令" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none font-bold text-sm text-slate-800" required>
                         </div>
                     </div>
+                    
+                    <div v-if="cloudStatus === 'error'" class="text-xs text-red-500 font-bold text-center mt-2 bg-red-50 py-2 rounded border border-red-100">
+                        <i class="fas fa-exclamation-triangle"></i> 云端连接断开，请使用默认密码 viewer123 或 admin123 登入。
+                    </div>
+
                     <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-lg shadow-lg transition-all uppercase tracking-widest text-sm mt-4">
                         Enter Platform
                     </button>
@@ -103,8 +108,7 @@
                     <button @click="activeTab = 'calendar'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'calendar' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
                         <i class="fas fa-calendar-alt w-5 text-center"></i><span class="text-sm tracking-wide">行业日历归档</span>
                     </button>
-                    <!-- 暂时隐藏历史数据库，避免白屏问题 -->
-                    <button v-if="false" @click="activeTab = 'history'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'history' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                    <button @click="activeTab = 'history'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'history' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
                         <i class="fas fa-database w-5 text-center"></i><span class="text-sm tracking-wide">历史数据库</span>
                     </button>
                     
@@ -119,7 +123,14 @@
                     </template>
                 </nav>
 
-                <div class="p-5 bg-slate-950 border-t border-slate-800">
+                <div class="p-5 bg-slate-950 border-t border-slate-800 flex flex-col gap-4">
+                    <!-- 云端同步状态指示灯 -->
+                    <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest px-2 py-1.5 rounded"
+                         :class="cloudStatus === 'connected' ? 'bg-green-900/40 text-green-400' : (cloudStatus === 'connecting' ? 'bg-amber-900/40 text-amber-400' : 'bg-red-900/40 text-red-400')">
+                        <i class="fas" :class="cloudStatus === 'connected' ? 'fa-cloud-upload-alt' : (cloudStatus === 'connecting' ? 'fa-sync fa-spin' : 'fa-cloud-download-alt')"></i>
+                        {{ cloudStatus === 'connected' ? 'DB: 云端同步正常' : (cloudStatus === 'connecting' ? 'DB: 尝试连接中...' : 'DB: 权限阻断(仅本地)') }}
+                    </div>
+
                     <div class="flex items-center justify-between">
                         <div class="flex flex-col">
                             <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Authorized User</span>
@@ -682,6 +693,9 @@
                 const genProgress = ref(0);
                 const isSaving = ref(false);
                 const lastApiError = ref('');
+                
+                // 新增：指示云端数据库的连通状态 ('connecting', 'connected', 'error')
+                const cloudStatus = ref('connecting');
 
                 // 恢复本地会话状态 (有效期 30 分钟)
                 try {
@@ -761,7 +775,7 @@
                         return;
                     }
 
-                    // 【核心修复：第一层防御】先从 LocalStorage 强行提取本地数据
+                    // 先尝试从 LocalStorage 强行提取本地数据作为托底展示
                     try {
                         const localSettings = localStorage.getItem(`pc_ai_settings_${safeAppId}`);
                         if (localSettings) Object.assign(settings, JSON.parse(localSettings));
@@ -788,12 +802,26 @@
                             if (attempts === 0) {
                                 authError.value = "数据库鉴权异常。但这不影响您的本地缓存使用，您可以强行刷新或者修改数据库 Rules。";
                                 isLoading.value = false;
+                                cloudStatus.value = 'error';
                             } else await new Promise(r => setTimeout(r, 1500));
                         }
                     }
+                    
                     onAuthStateChanged(auth, u => {
                         user.value = u;
-                        if (u) loadDatabaseData();
+                        if (u) {
+                            // 监听 Firebase 底层的连接状态
+                            const connectedRef = dbRef(db, ".info/connected");
+                            onValue(connectedRef, (snap) => {
+                                if (snap.val() === true) {
+                                    cloudStatus.value = 'connected';
+                                } else {
+                                    // 只有在不是明确报错的情况下才设为 connecting
+                                    if(cloudStatus.value !== 'error') cloudStatus.value = 'connecting';
+                                }
+                            });
+                            loadDatabaseData();
+                        }
                     });
                 });
 
@@ -808,11 +836,11 @@
                             if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
                             localStorage.setItem(`pc_ai_settings_${safeAppId}`, JSON.stringify(settings));
                         }
-                        else set(settingsPath, settings);
                         isLoading.value = false;
                     }, (err) => {
                         console.warn("DB Setting read blocked by rules, using local fallback.", err);
                         isLoading.value = false;
+                        cloudStatus.value = 'error'; // 明确标记为云端阻断错误
                     });
 
                     const reportsPath = dbRef(db, `artifacts/${safeAppId}/reports`);
@@ -827,6 +855,8 @@
                         if(!isGenerating.value) {
                             todayReport.value = reports.value.find(r => r.date === todayStr) || todayReport.value;
                         }
+                    }, (err) => {
+                        cloudStatus.value = 'error';
                     });
 
                     const logsPath = dbRef(db, `artifacts/${safeAppId}/logs`);
@@ -837,6 +867,8 @@
                             logs.value = res;
                             localStorage.setItem(`pc_ai_logs_${safeAppId}`, JSON.stringify(logs.value));
                         }
+                    }, (err) => {
+                        cloudStatus.value = 'error';
                     });
                 };
 
@@ -984,7 +1016,7 @@ ${wPrompt}
 
                         clearInterval(timer); genProgress.value = 98;
                         
-                        // 【核心修复：第二层防御】强行挂载到内存和 LocalStorage
+                        // 强行挂载到内存和 LocalStorage
                         todayReport.value = newReportData;
                         reports.value = [newReportData, ...reports.value.filter(r => r.date !== todayStr)];
                         localStorage.setItem(`pc_ai_reports_${safeAppId}`, JSON.stringify(reports.value));
@@ -1009,39 +1041,31 @@ ${wPrompt}
                     }
                 };
 
-                // 【核心修复：第三大升级】超级富文本正则渲染引擎，让画面不简陋、极其专业！
+                // 超级富文本正则渲染引擎
                 const superHighlight = (text, intents) => {
                     if (!text) return '';
                     let res = escapeHtml(text);
 
-                    // 1. 高亮意图背景
                     if (intents && intents.length > 0) {
                         [...intents].sort((a,b)=>b.length-a.length).forEach(k => {
                             res = res.replace(new RegExp(`(${escapeRegExp(k)})`,'gi'), '<mark class="bg-sky-100 text-sky-800 font-bold px-1 rounded shadow-sm">$1</mark>');
                         });
                     }
 
-                    // 2. 核心大厂及品牌 -> 骚气的亮紫色加粗
                     const brands = ['Apple', 'Microsoft', 'Huawei', 'Lenovo', 'Dell', 'HP', '苹果', '微软', '华为', '联想', '戴尔', '惠普', 'iPad', 'Surface', 'HarmonyOS', 'Windows', 'Copilot', '鸿蒙', 'MacBook', 'Mac'];
                     brands.forEach(b => {
                         res = res.replace(new RegExp(`(${escapeRegExp(b)})`, 'g'), '<span class="hl-brand">$1</span>');
                     });
 
-                    // 3. 硬件与产品词汇 -> 警戒红加粗
                     const tech = ['OLED', 'NPU', 'AI PC', '二合一', '处理器', '芯片', 'Snapdragon', '骁龙', 'M4', 'M3', 'Core', 'Ultra', 'AIPC', '端侧算力', '大模型', 'LLM'];
                     tech.forEach(t => {
                         res = res.replace(new RegExp(`(${escapeRegExp(t)})`, 'gi'), '<span class="hl-product">$1</span>');
                     });
 
-                    // 4. 数字/百分比/财报涨跌 -> 华尔街绿/跌落红
                     res = res.replace(/(\d+(?:\.\d+)?%)/g, '<span class="hl-data">$1</span>');
                     res = res.replace(/(增长|上涨|提升|突破)/g, '<span class="hl-up"> $1 <i class="fas fa-arrow-up text-[10px]"></i> </span>');
                     res = res.replace(/(下降|下滑|跌幅|减少)/g, '<span class="hl-down"> $1 <i class="fas fa-arrow-down text-[10px]"></i> </span>');
-
-                    // 5. 日期年份加粗包裹
                     res = res.replace(/((?:202\d年)?\d+月(?:\d+日)?|Q[1-4]|(?:202\d)年)/g, '<span class="hl-date">$1</span>');
-
-                    // 换行渲染
                     res = res.replace(/\n/g, '<br/>');
 
                     return res;
@@ -1067,7 +1091,6 @@ ${wPrompt}
                 const getSentimentClass = s => s==='positive' ? 'bg-green-500 text-white' : (s==='negative' ? 'bg-rose-600 text-white' : 'bg-slate-500 text-white');
                 const getSentimentText = s => s==='positive' ? '✔ 行业利好 (Positive)' : (s==='negative' ? '⚠ 风险警示 (Risk)' : '● 态势平稳 (Neutral)');
 
-                // Calendar
                 const currentDate = ref(new Date());
                 const currentMonthStr = computed(()=>`${currentDate.value.getFullYear()} . ${String(currentDate.value.getMonth()+1).padStart(2,'0')}`);
                 const changeMonth = d => currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+d, 1);
@@ -1082,13 +1105,11 @@ ${wPrompt}
                 });
                 const selectDate = (day) => { todayReport.value = reports.value.find(r=>r.date===day.dateStr); activeTab.value = 'dashboard'; lastApiError.value = ''; };
 
-                // History (核心修复：防止 date 或 summary 为空时抛出异常导致白屏)
                 const searchQuery = ref('');
                 const historyPage = ref(1);
                 const filteredReports = computed(()=> {
                     return reports.value.filter(r => {
                         const matchDate = r.date && r.date.includes(searchQuery.value);
-                        // 强制进行安全类型校验
                         const matchSummary = r.summary && typeof r.summary === 'string' && r.summary.includes(searchQuery.value);
                         return matchDate || matchSummary;
                     });
@@ -1097,18 +1118,16 @@ ${wPrompt}
                 const paginatedReports = computed(()=> filteredReports.value.slice((historyPage.value-1)*5, historyPage.value*5));
                 watch(searchQuery, ()=>historyPage.value=1);
 
-                // Logs
                 const logsPage = ref(1);
                 const logsTotalPages = computed(()=> Math.ceil(logs.value.length / 15));
                 const paginatedLogs = computed(()=> logs.value.slice((logsPage.value-1)*15, logsPage.value*15));
                 const formatTime = ts => { const d=new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
 
-                // Settings Admin
                 const addWhitelist = () => { if(newWLName.value.trim() && !settings.whitelist.includes(newWLName.value.trim())) { settings.whitelist.push(newWLName.value.trim()); newWLName.value=''; } };
                 const saveSettings = async () => {
                     isSaving.value = true;
                     
-                    // 【核心修复】第一步：先强制写进本地硬盘，确保配置不丢
+                    // 第一步：先强制写进本地硬盘，确保配置不丢
                     const payload = JSON.parse(JSON.stringify(settings));
                     localStorage.setItem(`pc_ai_settings_${safeAppId}`, JSON.stringify(payload));
 
@@ -1137,7 +1156,7 @@ ${wPrompt}
 
                 return {
                     isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
-                    isConfigError, lastApiError, 
+                    isConfigError, lastApiError, cloudStatus,
                     todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
                     superHighlight, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
                     hasValidChartData,
