@@ -197,24 +197,28 @@
                                                     <span class="bg-sky-500 text-white text-xs px-2 py-0.5 rounded-sm">0{{ idx + 1 }}</span>
                                                     {{ module.name }}
                                                 </h3>
-                                                <div v-if="getModuleData(module.id)?.sentiment" :class="['text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded-sm whitespace-nowrap', getSentimentClass(getModuleData(module.id).sentiment)]">
-                                                    {{ getSentimentText(getModuleData(module.id).sentiment) }}
+                                                <div v-if="getModuleData(module)?.sentiment" :class="['text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded-sm whitespace-nowrap', getSentimentClass(getModuleData(module).sentiment)]">
+                                                    {{ getSentimentText(getModuleData(module).sentiment) }}
                                                 </div>
                                             </div>
                                             <div class="p-6 flex-1 flex flex-col">
-                                                <div v-if="getModuleData(module.id)?.deconstructedIntents?.length" class="mb-5">
+                                                <div v-if="getModuleData(module)?.deconstructedIntents?.length" class="mb-5">
                                                     <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">AI 智能解构维度</div>
                                                     <div class="flex flex-wrap gap-2">
-                                                        <span v-for="intent in getModuleData(module.id).deconstructedIntents" class="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2.5 py-1 rounded-sm font-semibold">{{ intent }}</span>
+                                                        <span v-for="intent in getModuleData(module).deconstructedIntents" class="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2.5 py-1 rounded-sm font-semibold">{{ intent }}</span>
                                                     </div>
                                                 </div>
-                                                <div class="text-slate-700 text-sm leading-loose text-justify mb-6 flex-1" v-html="highlightText(getModuleData(module.id)?.content, getModuleData(module.id)?.deconstructedIntents)">
+                                                
+                                                <div v-if="getModuleData(module)?.content" class="text-slate-700 text-sm leading-loose text-justify mb-6 flex-1" v-html="highlightText(getModuleData(module).content, getModuleData(module).deconstructedIntents)"></div>
+                                                <div v-else class="text-amber-600 font-bold text-sm leading-loose text-justify mb-6 flex-1">
+                                                    <i class="fas fa-exclamation-triangle"></i> 大模型未正确返回该模块的数据，可能因抓取超时跳过。
                                                 </div>
+
                                                 <!-- 来源 -->
-                                                <div v-if="getModuleData(module.id)?.sources?.length" class="mt-auto pt-5 border-t border-dashed border-slate-200">
+                                                <div v-if="getModuleData(module)?.sources?.length" class="mt-auto pt-5 border-t border-dashed border-slate-200">
                                                     <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 flex items-center gap-1"><i class="fas fa-link"></i> 溯源与参考资料</div>
                                                     <ul class="space-y-2">
-                                                        <li v-for="(src, i) in getModuleData(module.id).sources" class="text-xs flex items-start gap-1.5">
+                                                        <li v-for="(src, i) in getModuleData(module).sources" class="text-xs flex items-start gap-1.5">
                                                             <span class="text-slate-400 font-bold">[{{ i+1 }}]</span>
                                                             <a :href="src.url" target="_blank" class="text-sky-600 hover:text-sky-800 hover:underline line-clamp-1 flex-1 font-medium">{{ src.title || src.url }}</a>
                                                         </li>
@@ -239,12 +243,12 @@
                                             </div>
                                             <div class="md:w-3/4 flex flex-col border-l border-slate-200 md:pl-6">
                                                 <div class="text-slate-700 text-sm leading-loose text-justify mb-6 whitespace-pre-wrap">
-                                                    {{ getWebsiteData(site.id)?.content || '暂无分析数据，大模型响应缺省。' }}
+                                                    {{ getWebsiteData(site)?.content || '大模型响应缺省，未成功生成此版块数据。' }}
                                                 </div>
-                                                <div v-if="getWebsiteData(site.id)?.sources?.length" class="mt-auto bg-white border border-slate-200 p-4 rounded-md">
+                                                <div v-if="getWebsiteData(site)?.sources?.length" class="mt-auto bg-white border border-slate-200 p-4 rounded-md">
                                                     <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 flex items-center gap-1"><i class="fas fa-link"></i> 情报来源</div>
                                                     <ul class="space-y-1.5">
-                                                        <li v-for="(src, i) in getWebsiteData(site.id).sources" class="text-xs flex items-center gap-1.5">
+                                                        <li v-for="(src, i) in getWebsiteData(site).sources" class="text-xs flex items-center gap-1.5">
                                                             <span class="text-slate-400 font-bold">[{{ i+1 }}]</span>
                                                             <a :href="src.url" target="_blank" class="text-sky-600 hover:underline line-clamp-1 font-medium">{{ src.title || src.url }}</a>
                                                         </li>
@@ -555,7 +559,7 @@
         // --- Firebase Modules via CDN ---
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-        import { getDatabase, ref as dbRef, onValue, set, update } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
         // =======================================================================
         // ⚠️ 本地部署必读：如果您将此文件下载到本地双击运行，请替换下方的配置！
@@ -563,7 +567,6 @@
         const localFirebaseConfig = {
             apiKey: "AIzaSyALayTmut_Qt5HHfeDwK-IxUEzLxFujIK8",
             authDomain: "pc-ai-insights.firebaseapp.com",
-            databaseURL: "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app/",
             projectId: "pc-ai-insights",
             storageBucket: "pc-ai-insights.firebasestorage.app",
             messagingSenderId: "676319801033",
@@ -581,18 +584,10 @@
             fbConfigObj = { apiKey: "mock", projectId: "mock", appId: "1:1:web:1" };
         }
 
-        // --- 核心修复：如果是 Canvas 预览环境，补全 databaseURL 以防止 SDK 报错 ---
-        if (typeof __firebase_config !== 'undefined' && !fbConfigObj.databaseURL && localFirebaseConfig.databaseURL) {
-            fbConfigObj.databaseURL = localFirebaseConfig.databaseURL;
-        }
-
         const firebaseApp = initializeApp(fbConfigObj);
         const auth = getAuth(firebaseApp);
-        const db = getDatabase(firebaseApp);
+        const db = getFirestore(firebaseApp);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-insight-dashboard';
-
-        // 核心修复点：Firebase Realtime Database 路径严格禁止包含 ".", "#", "$", "[", "]" 等字符
-        const safeAppId = appId.replace(/[.#$\[\]]/g, '_');
 
         // Utilities
         const escapeHtml = (text) => {
@@ -681,7 +676,7 @@
                     if (myChart) myChart.dispose();
                     myChart = echarts.init(dom);
                     const data = settings.modules.map(m => {
-                        const r = todayReport.value.moduleData?.find(d => d.moduleId === m.id);
+                        const r = todayReport.value.moduleData?.find(d => d.moduleId === m.name || d.moduleId === m.id);
                         return { name: m.name, value: r?.deconstructedIntents?.length || 0 };
                     });
                     myChart.setOption({
@@ -718,46 +713,38 @@
                         }
                     }
                     onAuthStateChanged(auth, u => {
-                    user.value = u;
-                    if (u) loadDatabaseData();
-                });
-            });
-
-            // Load Data using Realtime Database
-            const loadDatabaseData = () => {
-                const settingsPath = dbRef(db, `artifacts/${safeAppId}/settings/config`);
-                onValue(settingsPath, (snap) => {
-                    const data = snap.val();
-                    if (data) {
-                        Object.assign(settings, data);
-                        if (settings.deepseekBaseUrl === 'https://api.deepseek.com/chat/completions') settings.deepseekBaseUrl = 'https://api.deepseek.com';
-                        if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
-                    }
-                    else set(settingsPath, settings);
-                    isLoading.value = false;
-                });
-                
-                const reportsPath = dbRef(db, `artifacts/${safeAppId}/reports`);
-                onValue(reportsPath, (snap) => {
-                    const data = snap.val() || {};
-                    const res = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>new Date(b.date)-new Date(a.date));
-                    reports.value = res;
-                    todayReport.value = res.find(r => r.date === todayStr) || null;
+                        user.value = u;
+                        if (u) loadFirestoreData();
+                    });
                 });
 
-                const logsPath = dbRef(db, `artifacts/${safeAppId}/logs`);
-                onValue(logsPath, (snap) => {
-                    const data = snap.val() || {};
-                    logs.value = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>b.timestamp-a.timestamp);
-                });
-            };
+                // Load Data
+                const loadFirestoreData = () => {
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), (snap) => {
+                        if (snap.exists()) {
+                            Object.assign(settings, snap.data());
+                            if (settings.deepseekBaseUrl === 'https://api.deepseek.com/chat/completions') settings.deepseekBaseUrl = 'https://api.deepseek.com';
+                            if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
+                        }
+                        else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), settings);
+                        isLoading.value = false;
+                    });
+                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), (snap) => {
+                        const res = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>new Date(b.date)-new Date(a.date));
+                        reports.value = res;
+                        todayReport.value = res.find(r => r.date === todayStr) || null;
+                    });
+                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), (snap) => {
+                        logs.value = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>b.timestamp-a.timestamp);
+                    });
+                };
 
-            const logAction = async (action, targetName, details = '') => {
-                const logId = Date.now() + Math.random().toString(36).substr(2, 6);
-                await set(dbRef(db, `artifacts/${safeAppId}/logs/${logId}`), { timestamp: Date.now(), userName: targetName, action, details });
-            };
+                const logAction = async (action, targetName, details = '') => {
+                    const logId = Date.now() + Math.random().toString(36).substr(2, 6);
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', logId), { timestamp: Date.now(), userName: targetName, action, details });
+                };
 
-            const handleLogin = () => {
+                const handleLogin = () => {
                     const name = loginForm.name.trim();
                     if (!name) return Swal.fire({icon:'error', title:'登录失败', text:'请输入真实姓名'});
                     if (loginForm.pwd === settings.passwords.admin) {
@@ -788,8 +775,8 @@
                     try {
                         let text = "";
                         
-                        const mPrompt = settings.modules.map(m=>`[ID: ${m.id}] 模块:【${m.name}】描述:"${m.description}"`).join('\n');
-                        const wPrompt = settings.coreWebsites.map(w=>`[ID: ${w.id}] 生态:【${w.name}】描述:"${w.description}"`).join('\n');
+                        const mPrompt = settings.modules.map(m=>`[标识: ${m.name}] 描述:"${m.description}"`).join('\n');
+                        const wPrompt = settings.coreWebsites.map(w=>`[标识: ${w.name}] 描述:"${w.description}"`).join('\n');
 
                         if (settings.llmProvider === 'deepseek') {
                             const key = settings.deepseekApiKey?.trim().replace(/[^\x00-\x7F]/g, "");
@@ -800,30 +787,43 @@
                                 endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
                             }
 
-                            const p = `你是顶尖商业分析师。今天:${todayStr}。\n基于强大的知识库和推理能力，深度洞察以下板块:\n
-【业务模块】\n${mPrompt}\n
-【核心生态】\n${wPrompt}\n
+                            const p = `你是顶尖商业分析师。今天:${todayStr}。
+基于强大的知识库和推理能力，深度洞察以下板块:
+
+【业务模块】
+${mPrompt}
+
+【核心生态】
+${wPrompt}
+
 【严格指令】
 1. 必须输出合法 JSON，绝对不准留空任何 content 字段！如果无突发新闻，务必基于深度的商业模式或技术趋势写出研报级分析段落。
-2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [ID: xxx] 里的字符(例如 m1, w1 等)，绝对不要自己擅自更改 ID 名称！
-3. 必须提供虚拟但方向正确的 references (sources)。\n
-输出格式化JSON模板：
-{"summary":"...","moduleData":[{"moduleId":"...","deconstructedIntents":["词1"],"content":"...","sentiment":"positive","sources":[{"title":"...","url":"#"}]}],"websiteData":[{"siteId":"...","content":"...","sources":[{"title":"...","url":"#"}]}]}`;
+2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [标识] 里的名称，绝对不要擅自更改！
+3. 必须提供虚拟但方向正确的 references (sources)。
+
+输出格式化JSON模板 (请直接输出纯JSON对象，不要包裹Markdown)：
+{"summary":"...","moduleData":[{"moduleId":"填入对应的业务模块标识名称","deconstructedIntents":["词1"],"content":"...","sentiment":"positive","sources":[{"title":"...","url":"#"}]}],"websiteData":[{"siteId":"填入对应的生态标识名称","content":"...","sources":[{"title":"...","url":"#"}]}]}`;
                             
                             const res = await fetchWithRetry(endpoint, {
                                 method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
-                                body: JSON.stringify({ model: settings.deepseekModel || "deepseek-v4-pro", messages:[{role:'user',content:p}], response_format:{type:'json_object'} })
+                                body: JSON.stringify({ model: settings.deepseekModel || "deepseek-v4-pro", messages:[{role:'user',content:p}] })
                             });
                             text = res.choices?.[0]?.message?.content;
                         } else {
                             const key = settings.geminiApiKey?.trim().replace(/[^\x00-\x7F]/g, "");
-                            const p = `你是顶尖商业分析师。今天:${todayStr}。\n调用google_search深入洞察以下板块:\n
-【业务模块】\n${mPrompt}\n
-【核心生态】\n${wPrompt}\n
+                            const p = `你是顶尖商业分析师。今天:${todayStr}。
+调用google_search深入洞察以下板块:
+
+【业务模块】
+${mPrompt}
+
+【核心生态】
+${wPrompt}
+
 【严格指令】
 1. 必须进行网络搜索。绝对不准留空任何 content 字段！无新突发时必须分析长期商业策略或行业技术瓶颈。
-2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [ID: xxx] 里的字符(例如 m1, w1 等)，绝对不要自己擅自更改 ID 名称！
-3. 必须附带真实的 references (sources)。\n`;
+2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [标识] 里的名称，绝对不要擅自更改！
+3. 必须附带真实的 references (sources)。`;
 
                             const schema = { type:"OBJECT", properties:{ summary:{type:"STRING"}, moduleData:{type:"ARRAY",items:{type:"OBJECT",properties:{moduleId:{type:"STRING"},deconstructedIntents:{type:"ARRAY",items:{type:"STRING"}},content:{type:"STRING"},sentiment:{type:"STRING"},sources:{type:"ARRAY",items:{type:"OBJECT",properties:{title:{type:"STRING"},url:{type:"STRING"}}}}}}}, websiteData:{type:"ARRAY",items:{type:"OBJECT",properties:{siteId:{type:"STRING"},content:{type:"STRING"},sources:{type:"ARRAY",items:{type:"OBJECT",properties:{title:{type:"STRING"},url:{type:"STRING"}}}}}}}}, required:["summary","moduleData","websiteData"] };
                             
@@ -835,134 +835,15 @@
                         }
 
                         if(!text) throw new Error("大模型无返回。");
-                    
-                    let data;
-                    try { 
-                        // 终极修复：彻底剥离 DeepSeek 返回的 <think> 推理过程标签，确保 JSON 解析万无一失
-                        let cleanText = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-                        cleanText = cleanText.replace(/```json/g,'').replace(/```/g,'').trim();
-                        const firstBrace = cleanText.indexOf('{');
-                        const lastBrace = cleanText.lastIndexOf('}');
-                        if (firstBrace !== -1 && lastBrace !== -1) {
-                            cleanText = cleanText.substring(firstBrace, lastBrace + 1);
-                        }
-                        data = JSON.parse(cleanText); 
-                    } catch(e) { 
-                        console.error("Original text from model:", text);
-                        throw new Error("大模型返回的数据格式异常，无法解析为 JSON！请重试。"); 
-                    }
-                    
-                    clearInterval(timer); genProgress.value = 98;
-                    await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), {
-                        date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
-                    });
-                    logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
-                    genProgress.value = 100;
-                    setTimeout(() => isGenerating.value = false, 800);
-                    Swal.fire({icon:'success', title:'生成成功', text:'全网深度研报已入档！', timer:2000, showConfirmButton:false});
-
-                } catch (err) {
-                    clearInterval(timer); isGenerating.value = false; genProgress.value = 0;
-                        logAction('生成异常', userName.value, err.message);
-                        Swal.fire({icon:'error', title:'执行中断', text:err.message});
-                    }
-                };
-
-                // UI Helpers (Enhanced fault tolerance for missing or slightly mismatched IDs)
-                const highlightText = (text, keywords) => {
-                    if (!text || !keywords || !keywords.length) return escapeHtml(text||'');
-                    let res = escapeHtml(text);
-                    [...keywords].sort((a,b)=>b.length-a.length).forEach(k => {
-                        res = res.replace(new RegExp(`(${escapeRegExp(k)})`,'gi'), '<mark class="bg-sky-100 text-sky-800 font-bold px-1 rounded shadow-sm decoration-sky-300 underline underline-offset-4 decoration-2">$1</mark>');
-                    });
-                    return res;
-                };
-                
-                const getModuleData = id => {
-                    if (!todayReport.value || !todayReport.value.moduleData) return null;
-                    return todayReport.value.moduleData.find(d => d.moduleId === id) 
-                        || todayReport.value.moduleData.find(d => id.includes(d.moduleId) || (d.moduleId && d.moduleId.includes(id)));
-                };
-                const getWebsiteData = id => {
-                    if (!todayReport.value || !todayReport.value.websiteData) return null;
-                    return todayReport.value.websiteData.find(d => d.siteId === id)
-                        || todayReport.value.websiteData.find(d => id.includes(d.siteId) || (d.siteId && d.siteId.includes(id)));
-                };
-                
-                const getSentimentClass = s => s==='positive' ? 'bg-green-500/20 text-green-700' : (s==='negative' ? 'bg-red-500/20 text-red-700' : 'bg-slate-200 text-slate-700');
-                const getSentimentText = s => s==='positive' ? 'Positive' : (s==='negative' ? 'Risk Alert' : 'Neutral');
-
-                // Calendar
-                const currentDate = ref(new Date());
-                const currentMonthStr = computed(()=>`${currentDate.value.getFullYear()} . ${String(currentDate.value.getMonth()+1).padStart(2,'0')}`);
-                const changeMonth = d => currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+d, 1);
-                const calendarFirstDay = computed(()=> new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay());
-                const calendarDays = computed(()=> {
-                    const days = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+1, 0).getDate();
-                    const rSet = new Set(reports.value.map(r=>r.date));
-                    return Array.from({length:days}, (_,i) => {
-                        const dStr = `${currentDate.value.getFullYear()}-${String(currentDate.value.getMonth()+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
-                        return { dayNum: i+1, dateStr: dStr, hasReport: rSet.has(dStr), isToday: dStr===todayStr };
-                    });
-                });
-                const selectDate = (day) => { todayReport.value = reports.value.find(r=>r.date===day.dateStr); activeTab.value = 'dashboard'; };
-
-                // History
-                const searchQuery = ref('');
-                const historyPage = ref(1);
-                const filteredReports = computed(()=> reports.value.filter(r => r.date.includes(searchQuery.value) || r.summary?.includes(searchQuery.value)));
-                const historyTotalPages = computed(()=> Math.ceil(filteredReports.value.length / 5));
-                const paginatedReports = computed(()=> filteredReports.value.slice((historyPage.value-1)*5, historyPage.value*5));
-                watch(searchQuery, ()=>historyPage.value=1);
-
-                // Logs
-                const logsPage = ref(1);
-                const logsTotalPages = computed(()=> Math.ceil(logs.value.length / 15));
-                const paginatedLogs = computed(()=> logs.value.slice((logsPage.value-1)*15, logsPage.value*15));
-                const formatTime = ts => { const d=new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
-
-                // Settings Admin
-            const addWhitelist = () => { if(newWLName.value.trim() && !settings.whitelist.includes(newWLName.value.trim())) { settings.whitelist.push(newWLName.value.trim()); newWLName.value=''; } };
-            const saveSettings = async () => {
-                isSaving.value = true;
-                try {
-                    const payload = JSON.parse(JSON.stringify(settings));
-                    
-                    const saveTask = update(dbRef(db, `artifacts/${safeAppId}/settings/config`), payload);
-                    
-                    await Promise.race([
-                        saveTask,
-                        new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 8000))
-                    ]);
-
-                    logAction('更新配置', userName.value, '管理员全量保存系统策略');
-                    Swal.fire({icon:'success', title:'生效', text:'AI策略与安防规则已成功部署', timer:1500, showConfirmButton:false});
-                } catch(e) { 
-                    console.error("保存失败:", e);
-                    if (e.message === "TIMEOUT") {
-                        Swal.fire({icon:'error', title:'保存请求超时', html:'网络被拦截，或数据库规则拒绝写入'});
-                    } else {
-                        Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'});
-                    }
-                } finally {
-                    isSaving.value = false;
-                }
-            };
-
-            return {
-                    isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
-                    isConfigError, // 导出错误标记
-                    todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
-                    highlightText, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
-                    currentMonthStr, changeMonth, calendarFirstDay, calendarDays, selectDate,
-                    searchQuery, historyPage, historyTotalPages, paginatedReports,
-                    logsPage, logsTotalPages, paginatedLogs, formatTime,
-                    newWLName, addWhitelist, saveSettings
-                };
-            }
-        };
-
-        createApp(App).mount('#app');
-    </script>
-</body>
-</html>
+                        
+                        let data;
+                        try { 
+                            let cleanText = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                            cleanText = cleanText.replace(/```json/g,'').replace(/```/g,'').trim();
+                            const firstBrace = cleanText.indexOf('{');
+                            const lastBrace = cleanText.lastIndexOf('}');
+                            if (firstBrace !== -1 && lastBrace !== -1) {
+                                cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+                            }
+                            data = JSON.parse(cleanText); 
+                        } catch(e
