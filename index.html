@@ -78,8 +78,9 @@
                         </div>
                     </div>
                     
-                    <div v-if="cloudStatus === 'error'" class="text-xs text-red-500 font-bold text-center mt-2 bg-red-50 py-2 rounded border border-red-100">
-                        <i class="fas fa-exclamation-triangle"></i> 云端连接受限，正尝试离线环境登入。
+                    <!-- 已移除泄露密码的糟糕提示，改为专业的脱机警告 -->
+                    <div v-if="cloudStatus === 'error'" class="text-xs text-amber-600 font-bold text-center mt-3 bg-amber-50 py-2.5 rounded-md border border-amber-200 flex items-center justify-center gap-2">
+                        <i class="fas fa-wifi-slash text-amber-500"></i> 云端未响应，平台已自动切换至本地离线安全模式。
                     </div>
 
                     <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-lg shadow-lg transition-all uppercase tracking-widest text-sm mt-4">
@@ -471,6 +472,7 @@
                                         <label class="block font-bold text-sm mb-3 uppercase tracking-widest text-sky-800">DeepSeek API Key (必填)</label>
                                         <input type="password" v-model="settings.deepseekApiKey" placeholder="sk-..." class="w-full px-4 py-3 border border-sky-200 rounded-lg font-bold outline-none focus:ring-2 focus:ring-sky-200">
                                     </div>
+                                    <p class="text-xs text-sky-700 mt-2"><i class="fas fa-info-circle"></i> 系统会自动拼接端点。支持填写官方 URL 及最新模型 (如 deepseek-v4-pro)。</p>
                                 </div>
                             </div>
                         </section>
@@ -584,12 +586,17 @@
             fbConfigObj = { apiKey: "mock", projectId: "mock", appId: "1:1:web:1" };
         }
 
-        // 强制覆盖/补全 DatabaseURL（确保云端读写 100% 连入您的 Realtime DB）
-        fbConfigObj.databaseURL = "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app/";
+        // 强制覆盖/补全 DatabaseURL，并强制去除末尾的斜杠，避免由于区域节点解析错误导致的 SDK 拒绝连接
+        let safeDbUrl = localFirebaseConfig.databaseURL || "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app/";
+        if (safeDbUrl && safeDbUrl.endsWith('/')) {
+            safeDbUrl = safeDbUrl.slice(0, -1);
+        }
+        fbConfigObj.databaseURL = safeDbUrl;
 
         const firebaseApp = initializeApp(fbConfigObj);
         const auth = getAuth(firebaseApp);
-        const db = getDatabase(firebaseApp);
+        // 【核心修复】显式传入处理过斜杠的安全 URL，强制连接亚洲节点，彻底解决无法读写云端数据的顽疾！
+        const db = getDatabase(firebaseApp, safeDbUrl);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-insight-dashboard';
 
         const safeAppId = appId.replace(/[.#$\[\]]/g, '_');
@@ -752,26 +759,19 @@
                         if (localLogs) logs.value = JSON.parse(localLogs);
                     } catch(e) { console.warn("Local storage fallback failed.", e); }
 
-                    let attempts = 3;
-                    while (attempts > 0) {
-                        try {
-                            const initToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                            if (initToken) await signInWithCustomToken(auth, initToken);
-                            else await signInAnonymously(auth);
-                            break;
-                        } catch (err) {
-                            attempts--;
-                            if (attempts === 0) {
-                                console.warn("Firebase 匿名验证未开启，尝试跳过验证直接连接数据库...");
-                            } else await new Promise(r => setTimeout(r, 1000));
-                        }
-                    }
+                    // 跳过阻塞式的身份验证，因为您的规则是完全开放的 (.read:true, .write:true)
+                    // 不再强制等待匿名登录成功，直接去读写数据库！
+                    try {
+                        const initToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        if (initToken) signInWithCustomToken(auth, initToken).catch(e => console.warn(e));
+                        else signInAnonymously(auth).catch(e => console.warn(e));
+                    } catch (err) {}
                     
                     onAuthStateChanged(auth, u => {
                         user.value = u;
                     });
 
-                    // 霸王硬上弓：无论 Auth 成功还是报错(因为未开匿名登录)，只要数据库 rules 设为 true，强行去连接读写！
+                    // 霸王硬上弓：无论 Auth 成功还是报错，强行连接读写！
                     const connectedRef = dbRef(db, ".info/connected");
                     onValue(connectedRef, (snap) => {
                         if (snap.val() === true) {
@@ -845,9 +845,14 @@
                 const handleLogin = () => {
                     const name = loginForm.name.trim();
                     if (!name) return Swal.fire({icon:'error', title:'登录失败', text:'请输入真实姓名'});
-                    if (loginForm.pwd === settings.passwords.admin) {
+                    
+                    // 默认密码为 admin123 和 viewer123（如果未能从云端获取设置）
+                    const adminPwd = settings.passwords?.admin || 'admin123';
+                    const viewerPwd = settings.passwords?.viewer || 'viewer123';
+
+                    if (loginForm.pwd === adminPwd) {
                         appRole.value = 'admin'; userName.value = name; logAction('登录系统', name, 'Admin 登入');
-                    } else if (loginForm.pwd === settings.passwords.viewer) {
+                    } else if (loginForm.pwd === viewerPwd) {
                         if (settings.whitelistMode && !settings.whitelist.includes(name)) {
                             logAction('拦截访问', name, '触发白名单防御');
                             return Swal.fire({icon:'error', title:'拦截访问', text:'您不在白名单内'});
