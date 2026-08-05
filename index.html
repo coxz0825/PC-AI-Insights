@@ -846,4 +846,134 @@ ${wPrompt}
                                 cleanText = cleanText.substring(firstBrace, lastBrace + 1);
                             }
                             data = JSON.parse(cleanText); 
-                        } catch(e
+                        } catch(e) { 
+                            console.error("Original text from model:", text);
+                            throw new Error("大模型返回的数据格式异常，无法解析为 JSON！请重试。"); 
+                        }
+                        
+                        clearInterval(timer); genProgress.value = 98;
+                        const saveTask = setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', todayStr), {
+                            date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
+                        });
+                        await Promise.race([
+                            saveTask,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error("FIRESTORE_TIMEOUT")), 8000))
+                        ]);
+                        logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
+                        genProgress.value = 100;
+                        setTimeout(() => isGenerating.value = false, 800);
+                        Swal.fire({icon:'success', title:'生成成功', text:'全网深度研报已入档！', timer:2000, showConfirmButton:false});
+
+                    } catch (err) {
+                        clearInterval(timer); isGenerating.value = false; genProgress.value = 0;
+                        logAction('生成异常', userName.value, err.message);
+                        if (err.message === "FIRESTORE_TIMEOUT") {
+                            Swal.fire({icon:'error', title:'保存请求超时', html:'可能是以下原因导致：<br/>1. 未在 Firebase 控制台点击<b>创建 Firestore 数据库</b><br/>2. 网络被拦截，无法连接数据库'});
+                        } else {
+                            Swal.fire({icon:'error', title:'执行中断', text:err.message});
+                        }
+                    }
+                };
+
+                const highlightText = (text, keywords) => {
+                    if (!text || !keywords || !keywords.length) return escapeHtml(text||'');
+                    let res = escapeHtml(text);
+                    [...keywords].sort((a,b)=>b.length-a.length).forEach(k => {
+                        res = res.replace(new RegExp(`(${escapeRegExp(k)})`,'gi'), '<mark class="bg-sky-100 text-sky-800 font-bold px-1 rounded shadow-sm decoration-sky-300 underline underline-offset-4 decoration-2">$1</mark>');
+                    });
+                    return res;
+                };
+                
+                const getModuleData = module => {
+                    if (!todayReport.value || !todayReport.value.moduleData) return null;
+                    return todayReport.value.moduleData.find(d => 
+                        d.moduleId === module.id || 
+                        d.moduleId === module.name ||
+                        (d.moduleId && typeof d.moduleId === 'string' && (d.moduleId.includes(module.id) || d.moduleId.includes(module.name) || module.name.includes(d.moduleId)))
+                    );
+                };
+                const getWebsiteData = site => {
+                    if (!todayReport.value || !todayReport.value.websiteData) return null;
+                    return todayReport.value.websiteData.find(d => 
+                        d.siteId === site.id || 
+                        d.siteId === site.name ||
+                        (d.siteId && typeof d.siteId === 'string' && (d.siteId.includes(site.id) || d.siteId.includes(site.name) || site.name.includes(d.siteId)))
+                    );
+                };
+                
+                const getSentimentClass = s => s==='positive' ? 'bg-green-500/20 text-green-700' : (s==='negative' ? 'bg-red-500/20 text-red-700' : 'bg-slate-200 text-slate-700');
+                const getSentimentText = s => s==='positive' ? 'Positive' : (s==='negative' ? 'Risk Alert' : 'Neutral');
+
+                // Calendar
+                const currentDate = ref(new Date());
+                const currentMonthStr = computed(()=>`${currentDate.value.getFullYear()} . ${String(currentDate.value.getMonth()+1).padStart(2,'0')}`);
+                const changeMonth = d => currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+d, 1);
+                const calendarFirstDay = computed(()=> new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay());
+                const calendarDays = computed(()=> {
+                    const days = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+1, 0).getDate();
+                    const rSet = new Set(reports.value.map(r=>r.date));
+                    return Array.from({length:days}, (_,i) => {
+                        const dStr = `${currentDate.value.getFullYear()}-${String(currentDate.value.getMonth()+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
+                        return { dayNum: i+1, dateStr: dStr, hasReport: rSet.has(dStr), isToday: dStr===todayStr };
+                    });
+                });
+                const selectDate = (day) => { todayReport.value = reports.value.find(r=>r.date===day.dateStr); activeTab.value = 'dashboard'; };
+
+                // History
+                const searchQuery = ref('');
+                const historyPage = ref(1);
+                const filteredReports = computed(()=> reports.value.filter(r => r.date.includes(searchQuery.value) || r.summary?.includes(searchQuery.value)));
+                const historyTotalPages = computed(()=> Math.ceil(filteredReports.value.length / 5));
+                const paginatedReports = computed(()=> filteredReports.value.slice((historyPage.value-1)*5, historyPage.value*5));
+                watch(searchQuery, ()=>historyPage.value=1);
+
+                // Logs
+                const logsPage = ref(1);
+                const logsTotalPages = computed(()=> Math.ceil(logs.value.length / 15));
+                const paginatedLogs = computed(()=> logs.value.slice((logsPage.value-1)*15, logsPage.value*15));
+                const formatTime = ts => { const d=new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
+
+                // Settings Admin
+                const addWhitelist = () => { if(newWLName.value.trim() && !settings.whitelist.includes(newWLName.value.trim())) { settings.whitelist.push(newWLName.value.trim()); newWLName.value=''; } };
+                const saveSettings = async () => {
+                    isSaving.value = true;
+                    try {
+                        const payload = JSON.parse(JSON.stringify(settings));
+                        const saveTask = updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), payload);
+                        
+                        await Promise.race([
+                            saveTask,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 8000))
+                        ]);
+
+                        logAction('更新配置', userName.value, '管理员全量保存系统策略');
+                        Swal.fire({icon:'success', title:'生效', text:'AI策略与安防规则已成功部署', timer:1500, showConfirmButton:false});
+                    } catch(e) { 
+                        console.error("保存失败:", e);
+                        if (e.message === "TIMEOUT") {
+                            Swal.fire({icon:'error', title:'保存请求超时', html:'可能是以下原因导致：<br/>1. 未在 Firebase 控制台点击<b>创建 Firestore 数据库</b><br/>2. 网络被拦截，无法连接数据库'});
+                        } else {
+                            Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'});
+                        }
+                    } finally {
+                        isSaving.value = false;
+                    }
+                };
+
+                return {
+                    isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
+                    isConfigError, // 导出错误标记
+                    todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
+                    highlightText, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
+                    currentMonthStr, changeMonth, calendarFirstDay, calendarDays, selectDate,
+                    searchQuery, historyPage, historyTotalPages, paginatedReports,
+                    logsPage, logsTotalPages, paginatedLogs, formatTime,
+                    newWLName, addWhitelist, saveSettings
+                };
+            }
+        };
+
+        createApp(App).mount('#app');
+    </script>
+</body>
+</html>
