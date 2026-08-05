@@ -5,16 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>平板与PC信息洞察平台</title>
     
-    <!-- Tailwind CSS (极速节点) -->
+    <!-- 引入分离的外部配置文件 -->
+    <script src="./config.js"></script>
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     
-    <!-- ECharts (极速节点) -->
+    <!-- ECharts -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     
-    <!-- SweetAlert2 (极速节点) -->
+    <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
     
     <style>
@@ -163,13 +166,29 @@
                                 </div>
                             </div>
 
-                            <!-- 空状态 -->
-                            <div v-if="!todayReport" class="py-20 text-center">
-                                <div class="inline-block p-6 rounded-full bg-slate-50 mb-4 border border-slate-100">
-                                    <i class="fas fa-search text-5xl text-slate-300"></i>
+                            <!-- 错误/空缺状态 -->
+                            <div v-if="!todayReport" class="py-16 text-center">
+                                <!-- 大模型异常错误面板 -->
+                                <div v-if="lastApiError" class="bg-red-50 border border-red-200 p-8 rounded-xl max-w-3xl mx-auto shadow-sm mb-8 animate-[fadeIn_0.5s_ease-out]">
+                                    <i class="fas fa-exclamation-triangle text-4xl text-red-500 mb-4 block"></i>
+                                    <h3 class="text-xl font-black text-red-800 mb-2">大模型引擎请求失败</h3>
+                                    <p class="text-red-600 text-sm leading-relaxed mb-4 text-left font-mono break-all">{{ lastApiError }}</p>
+                                    <div class="text-xs text-red-700 bg-red-100/60 p-4 rounded text-left leading-loose border border-red-200">
+                                        <b class="uppercase tracking-widest text-[10px] block mb-1">排查指导指南：</b>
+                                        1. <b>模型名称不匹配</b>：很多中转平台不支持 <code>deepseek-v4-pro</code>，请尝试前往设置将其改为官方标准的 <code>deepseek-chat</code>。<br/>
+                                        2. <b>API Key 错误或欠费</b>：检查您在【研报模型配置】中填入的 Key 是否有效。<br/>
+                                        3. <b>跨域被拦截</b>：如果您使用的是非官方的 Base URL，它可能拦截了网页请求，请确保其支持 CORS。
+                                    </div>
                                 </div>
-                                <h3 class="text-lg font-black text-slate-700 mb-2">研报智库空缺</h3>
-                                <p class="text-slate-500 text-sm max-w-md mx-auto">大模型尚未对今日的商业模块及核心生态进行解构抓取。<br/><b class="text-sky-600">请点击右上角的“执行全网深度分析引擎”按钮手动触发。</b></p>
+                                
+                                <!-- 正常的空白提示 -->
+                                <div v-else>
+                                    <div class="inline-block p-6 rounded-full bg-slate-50 mb-4 border border-slate-100">
+                                        <i class="fas fa-search text-5xl text-slate-300"></i>
+                                    </div>
+                                    <h3 class="text-lg font-black text-slate-700 mb-2">研报智库空缺</h3>
+                                    <p class="text-slate-500 text-sm max-w-md mx-auto">大模型尚未对今日的商业模块及核心生态进行解构抓取。<br/><b class="text-sky-600">请点击右上角的“执行全网深度分析引擎”按钮手动触发。</b></p>
+                                </div>
                             </div>
                             
                             <!-- 报告内容 -->
@@ -211,7 +230,7 @@
                                                 
                                                 <div v-if="getModuleData(module)?.content" class="text-slate-700 text-sm leading-loose text-justify mb-6 flex-1" v-html="highlightText(getModuleData(module).content, getModuleData(module).deconstructedIntents)"></div>
                                                 <div v-else class="text-amber-600 font-bold text-sm leading-loose text-justify mb-6 flex-1">
-                                                    <i class="fas fa-exclamation-triangle"></i> 大模型未正确返回该模块格式化数据，详情请参阅顶部的“执行摘要”。
+                                                    <i class="fas fa-exclamation-triangle"></i> 大模型未针对此独立模块返回格式化数据，分析内容可能已融合至上方的“执行摘要”中。
                                                 </div>
 
                                                 <!-- 来源 -->
@@ -371,7 +390,6 @@
                                         <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">板块呈现名称 (勿乱改)</label><input type="text" v-model="mod.name" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none font-bold text-slate-900 focus:border-sky-500"></div>
                                         <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">详细跟踪指令(自然语言)</label><textarea v-model="mod.description" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none text-slate-700 focus:border-sky-500 min-h-[100px]"></textarea></div>
                                     </div>
-                                    <div class="mt-2 text-xs text-slate-400">系统绑定ID: {{ mod.id }}</div>
                                 </div>
                                 <button @click="settings.modules.push({id: 'm'+Date.now(), name:'新模块', description:''})" class="w-full py-4 border-2 border-dashed border-slate-300 rounded-md text-slate-500 font-bold hover:bg-slate-50 flex items-center justify-center gap-2"><i class="fas fa-plus"></i> 新增行业分析模块</button>
                             </div>
@@ -390,7 +408,6 @@
                                         <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">生态/竞品名称</label><input type="text" v-model="site.name" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none font-bold text-slate-900 focus:border-indigo-500"></div>
                                         <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">战略追踪描述 / 备用策略</label><textarea v-model="site.description" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none text-slate-700 focus:border-indigo-500 min-h-[100px]"></textarea></div>
                                     </div>
-                                    <div class="mt-2 text-xs text-slate-400">系统绑定ID: {{ site.id }}</div>
                                 </div>
                                 <button @click="settings.coreWebsites.push({id: 'w'+Date.now(), name:'新生态', description:''})" class="w-full py-4 border-2 border-dashed border-slate-300 rounded-md text-slate-500 font-bold hover:bg-slate-50 flex items-center justify-center gap-2"><i class="fas fa-plus"></i> 增加核心生态监控池</button>
                             </div>
@@ -546,7 +563,7 @@
                         <div class="flex justify-between"><span>[Compute] 宏观趋势专业研判</span> <span :class="{'text-green-600 font-bold': genProgress > 70}">{{ genProgress > 70 ? 'OK' : '...' }}</span></div>
                         <div class="flex justify-between"><span>[Output] 专业研报文档生成</span> <span :class="{'text-green-600 font-bold': genProgress > 95}">{{ genProgress > 95 ? 'OK' : '...' }}</span></div>
                     </div>
-                    <p v-if="genProgress >= 40 && genProgress < 95" class="text-[10px] text-amber-500 mt-4 text-center animate-pulse"><i class="fas fa-info-circle"></i> 高级推理模型计算中，可能耗时1-3分钟，请耐心等待...</p>
+                    <p v-if="genProgress >= 40 && genProgress < 95" class="text-[10px] text-amber-500 mt-4 text-center animate-pulse"><i class="fas fa-info-circle"></i> 正在请求接口，若超时或受阻稍后会显示失败原因...</p>
                 </div>
             </div>
 
@@ -562,19 +579,8 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
         import { getDatabase, ref as dbRef, onValue, set, update } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
-        // =======================================================================
-        // ⚠️ 本地部署必读：如果您将此文件下载到本地双击运行，请替换下方的配置！
-        // =======================================================================
-        const localFirebaseConfig = {
-            apiKey: "AIzaSyALayTmut_Qt5HHfeDwK-IxUEzLxFujIK8",
-            authDomain: "pc-ai-insights.firebaseapp.com",
-            databaseURL: "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app/",
-            projectId: "pc-ai-insights",
-            storageBucket: "pc-ai-insights.firebasestorage.app",
-            messagingSenderId: "676319801033",
-            appId: "1:676319801033:web:fe725fd11529ebef886718",
-            measurementId: "G-4YTL42N6C3"
-        };
+        // 获取外部独立的配置变量，如果没有则使用备用空对象
+        const localFirebaseConfig = window.LOCAL_FIREBASE_CONFIG || {};
 
         // Firebase Setup
         let fbConfigObj = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : localFirebaseConfig;
@@ -606,36 +612,27 @@
         };
         const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        // Fetch with Retry
-        const fetchWithRetry = async (url, options, maxRetries = 5) => {
-            const delays = [1000, 2000, 4000, 8000, 16000];
+        // Fetch with Retry (极致精简优化，遇到错误直接抛出不假死)
+        const fetchWithRetry = async (url, options, maxRetries = 2) => {
+            const delays = [1000, 2000];
             for (let i = 0; i < maxRetries; i++) {
                 try {
                     const response = await fetch(url, options);
                     const responseText = await response.text();
                     
                     if (!response.ok) {
-                        let errMsg = `HTTP Error ${response.status}`;
+                        let errMsg = `HTTP 状态码: ${response.status}`;
                         try {
                             const errJson = JSON.parse(responseText);
-                            errMsg = errJson.error?.message || errJson.message || errMsg;
+                            errMsg = errJson.error?.message || errJson.message || JSON.stringify(errJson);
                         } catch (e) {
-                            errMsg = responseText.substring(0, 100);
+                            errMsg = responseText.substring(0, 200);
                         }
-                        
-                        if ([400, 401, 403, 404].includes(response.status)) {
-                            if (/API key not valid|authentication|API key|Auth/i.test(errMsg)) {
-                                throw new Error("大模型 API Key 无效或未授权，请检查【研报模型配置】中的密钥！");
-                            }
-                            throw new Error(`参数异常/模型不存在: ${errMsg}`);
-                        }
-                        if (i === maxRetries - 1) throw new Error(`服务器异常: ${errMsg}`);
-                        throw new Error("Trigger retry");
+                        throw new Error(`[接口拒绝] ${errMsg}`);
                     }
-                    
                     return JSON.parse(responseText);
                 } catch (error) {
-                    if (i === maxRetries - 1 || error.message.includes("无效") || error.message.includes("参数异常/模型不存在")) throw error;
+                    if (i === maxRetries - 1 || error.message.includes("[接口拒绝]")) throw error;
                 }
                 await new Promise(resolve => setTimeout(resolve, delays[i]));
             }
@@ -669,9 +666,15 @@
                 const isGenerating = ref(false);
                 const genProgress = ref(0);
                 const isSaving = ref(false);
+                const lastApiError = ref(''); // 核心追加：展示大模型静默错误的面板
 
-                // Derived state
-                const todayStr = new Date().toISOString().split('T')[0];
+                // 强制使用本地系统的当天日期，防止 UTC 时区错位导致存错地方
+                const getLocalTodayStr = () => {
+                    const d = new Date();
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                };
+                const todayStr = getLocalTodayStr();
+
                 const stats = computed(() => {
                     const todayStart = new Date().setHours(0,0,0,0);
                     const todayLogs = logs.value.filter(l => l.timestamp >= todayStart);
@@ -721,8 +724,8 @@
                 onMounted(async () => {
                     if (isConfigError) {
                         isLoading.value = true;
-                        authError.value = "⚠️ <b>检测到本地离线/Vercel环境</b><br/><br/>您当前运行的代码缺少了数据库配置，因此阻断了初始化。<br/><br/><b>解决方案：</b><br/>请使用代码编辑器打开此 <code>index.html</code> 文件，在第 <b>358</b> 行的 <code>localFirebaseConfig</code> 中填入您在 Firebase 控制台申请的真实 Config 对象信息，重新上传部署即可恢复！";
-                        return; // 终止后续操作，保留错误信息
+                        authError.value = "⚠️ <b>未检测到配置文件 config.js</b><br/><br/>请确保在 index.html 所在的同一目录下创建了 <code>config.js</code>，并将您的 Firebase 配置填入其中。<br/><br/>如果您修改了代码，请重新部署。";
+                        return;
                     }
 
                     let attempts = 3;
@@ -765,7 +768,10 @@
                         const data = snap.val() || {};
                         const res = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>new Date(b.date)-new Date(a.date));
                         reports.value = res;
-                        todayReport.value = res.find(r => r.date === todayStr) || null;
+                        // 不覆盖正在生成的今日数据
+                        if(!isGenerating.value) {
+                            todayReport.value = res.find(r => r.date === todayStr) || todayReport.value;
+                        }
                     });
 
                     const logsPath = dbRef(db, `artifacts/${safeAppId}/logs`);
@@ -802,69 +808,63 @@
                     appRole.value = null; userName.value = ''; loginForm.pwd = '';
                 };
 
-                // Generation
+                // Generation (重点重构区)
                 const generateDailyReport = async () => {
                     if (!settings.modules.length) return Swal.fire({icon:'warning', text:'请先配置模块！'});
-                    isGenerating.value = true; genProgress.value = 5;
+                    
+                    // 重置错误状态并显示加载条
+                    lastApiError.value = '';
+                    isGenerating.value = true; 
+                    genProgress.value = 5;
                     const timer = setInterval(() => { if(genProgress.value<90) genProgress.value+=Math.floor(Math.random()*8) }, 800);
                     
+                    let newReportData = null; // 在 try 的最外层声明，用于强行托底
+
                     try {
                         let text = "";
-                        
                         const mPrompt = settings.modules.map(m=>`[标识: ${m.name}] 描述:"${m.description}"`).join('\n');
                         const wPrompt = settings.coreWebsites.map(w=>`[标识: ${w.name}] 描述:"${w.description}"`).join('\n');
 
                         if (settings.llmProvider === 'deepseek') {
                             const key = settings.deepseekApiKey?.trim().replace(/[^\x00-\x7F]/g, "");
-                            if(!key) throw new Error("DeepSeek 未配置 API Key！");
+                            if(!key) throw new Error("您没有在设置中填写 DeepSeek API Key！");
                             
                             let endpoint = settings.deepseekBaseUrl?.trim() || "https://api.deepseek.com";
                             if (!endpoint.endsWith('/chat/completions')) {
                                 endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
                             }
 
-                            // 移除强制要求输出 JSON，使用自然语言强调。因为部分兼容的 Proxy 如果遇到 response_format 会报错 400 Bad Request
                             const p = `你是顶尖商业分析师。今天:${todayStr}。
-基于强大的知识库和推理能力，深度洞察以下板块:
-
+基于知识库深度洞察以下板块:
 【业务模块】
 ${mPrompt}
-
 【核心生态】
 ${wPrompt}
 
 【严格指令】
-1. 必须输出合法 JSON，绝对不准留空任何 content 字段！如果无突发新闻，务必基于深度的商业模式或技术趋势写出研报级分析段落。
+1. 必须输出合法JSON，绝对不准留空任何content字段！无突发新闻时务必分析深度商业模式或技术趋势。
 2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [标识] 里的名称，绝对不要擅自更改！
-3. 必须提供虚拟但方向正确的 references (sources)。
 
-输出格式化JSON模板 (请直接输出纯JSON对象，不要包裹Markdown)：
+输出格式化JSON模板 (直接输出纯JSON对象，不要加markdown标记)：
 {"summary":"...","moduleData":[{"moduleId":"填入对应的业务模块标识名称","deconstructedIntents":["词1"],"content":"...","sentiment":"positive","sources":[{"title":"...","url":"#"}]}],"websiteData":[{"siteId":"填入对应的生态标识名称","content":"...","sources":[{"title":"...","url":"#"}]}]}`;
                             
+                            // 发送请求，如果抛出错误会直接跳到外层 catch
                             const res = await fetchWithRetry(endpoint, {
                                 method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
                                 body: JSON.stringify({ 
-                                    model: settings.deepseekModel || "deepseek-v4-pro", 
+                                    model: settings.deepseekModel || "deepseek-chat", 
                                     messages: [{role:'user', content: p}]
-                                    // 删除了 response_format:{type:'json_object'} 以提供代理接口最大兼容性
                                 })
                             });
-                            text = res.choices?.[0]?.message?.content;
+                            
+                            if (!res.choices || !res.choices[0] || !res.choices[0].message) {
+                                throw new Error("接口调用成功，但服务器返回的数据结构异常：" + JSON.stringify(res).substring(0, 100));
+                            }
+                            text = res.choices[0].message.content;
+
                         } else {
                             const key = settings.geminiApiKey?.trim().replace(/[^\x00-\x7F]/g, "");
-                            const p = `你是顶尖商业分析师。今天:${todayStr}。
-调用google_search深入洞察以下板块:
-
-【业务模块】
-${mPrompt}
-
-【核心生态】
-${wPrompt}
-
-【严格指令】
-1. 必须进行网络搜索。绝对不准留空任何 content 字段！无新突发时必须分析长期商业策略或行业技术瓶颈。
-2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [标识] 里的名称，绝对不要擅自更改！
-3. 必须附带真实的 references (sources)。`;
+                            const p = `你是顶尖商业分析师。今天:${todayStr}。\n调用google_search深入洞察以下板块:\n【业务模块】\n${mPrompt}\n【核心生态】\n${wPrompt}\n【严格指令】\n1. 必须进行网络搜索。绝对不准留空content字段！\n2. 返回的JSON中moduleId和siteId必须填写上面提供的[标识]名称。\n3. 必须附带真实的sources。`;
 
                             const schema = { type:"OBJECT", properties:{ summary:{type:"STRING"}, moduleData:{type:"ARRAY",items:{type:"OBJECT",properties:{moduleId:{type:"STRING"},deconstructedIntents:{type:"ARRAY",items:{type:"STRING"}},content:{type:"STRING"},sentiment:{type:"STRING"},sources:{type:"ARRAY",items:{type:"OBJECT",properties:{title:{type:"STRING"},url:{type:"STRING"}}}}}}}, websiteData:{type:"ARRAY",items:{type:"OBJECT",properties:{siteId:{type:"STRING"},content:{type:"STRING"},sources:{type:"ARRAY",items:{type:"OBJECT",properties:{title:{type:"STRING"},url:{type:"STRING"}}}}}}}}, required:["summary","moduleData","websiteData"] };
                             
@@ -872,50 +872,64 @@ ${wPrompt}
                                 method:'POST', headers:{'Content-Type':'application/json'},
                                 body: JSON.stringify({ contents:[{parts:[{text:p}]}], tools:[{google_search:{}}], generationConfig:{responseMimeType:"application/json", responseSchema:schema} })
                             });
-                            text = res.candidates?.[0]?.content?.parts?.[0]?.text;
+                            
+                            if (!res.candidates || !res.candidates[0] || !res.candidates[0].content) {
+                                throw new Error("Gemini接口未能返回有效内容，可能是被安全策略阻断。");
+                            }
+                            text = res.candidates[0].content.parts[0].text;
                         }
 
-                        if(!text) throw new Error("大模型无返回。");
+                        if(!text || text.trim() === "") throw new Error("大模型接口返回了一串空字符串。");
                         
                         let data;
                         try { 
-                            // 终极托底解析：剥离 <think> 推理过程和首尾的 Markdown 标记
                             let cleanText = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-                            cleanText = cleanText.replace(/```json/g,'').replace(/```/g,'').trim();
+                            cleanText = cleanText.replace(/```json/gi,'').replace(/```/g,'').trim();
                             const firstBrace = cleanText.indexOf('{');
                             const lastBrace = cleanText.lastIndexOf('}');
                             if (firstBrace !== -1 && lastBrace !== -1) {
                                 cleanText = cleanText.substring(firstBrace, lastBrace + 1);
                             }
                             data = JSON.parse(cleanText); 
-                            
-                            // 校验格式是否彻底损坏
                             if (!data.summary && !data.moduleData && !data.websiteData) {
                                 throw new Error("JSON结构完全不符合标准。");
                             }
                         } catch(e) { 
                             console.error("JSON解析彻底失败，强行托底保存原文:", text);
-                            // 终极托底：即使 JSON 碎了，也把大模型的原文抢救下来塞进 Summary 里，绝不让页面空白！
                             data = {
-                                summary: "【系统提示：大模型返回的内容格式异常，无法渲染卡片，强制提取的原文如下】\n\n" + text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim(),
-                                moduleData: [],
-                                websiteData: []
+                                summary: "【系统提示：模型生成成功，但未能按 JSON 格式返回。原始摘要提取如下】\n\n" + text.replace(/<think>[\s\S]*?<\/think>/gi, '').substring(0, 3000),
+                                moduleData: [], websiteData: []
                             };
                         }
                         
-                        clearInterval(timer); genProgress.value = 98;
-                        await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), {
+                        // 构建最终报告数据
+                        newReportData = {
                             date: todayStr, timestamp: Date.now(), summary: data.summary || "生成成功，但未提供摘要。", moduleData: data.moduleData||[], websiteData: data.websiteData||[]
-                        });
-                        logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
-                        genProgress.value = 100;
-                        setTimeout(() => isGenerating.value = false, 800);
-                        Swal.fire({icon:'success', title:'生成成功', text:'全网深度研报已入档！', timer:2000, showConfirmButton:false});
+                        };
+
+                        clearInterval(timer); genProgress.value = 98;
+                        
+                        // 【核心修复】：无论数据库能不能保存成功，都先把它强制挂载到页面上显示出来！彻底告别“假死空白”！
+                        todayReport.value = newReportData;
+                        isGenerating.value = false; 
+
+                        // 再去尝试存进数据库
+                        try {
+                            await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), newReportData);
+                            logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
+                            Swal.fire({icon:'success', title:'生成并存档成功', text:'全网深度研报已入库！', timer:2000, showConfirmButton:false});
+                        } catch (dbErr) {
+                            console.warn("DB Save Error:", dbErr);
+                            Swal.fire({icon:'warning', title:'已生成，但存云端失败', html:'请前往 Firebase 的 Realtime Database，将 <b>规则 (Rules)</b> 改为 <code>.read: true, .write: true</code> 以永久保存。'});
+                        }
 
                     } catch (err) {
-                        clearInterval(timer); isGenerating.value = false; genProgress.value = 0;
-                        logAction('生成异常', userName.value, err.message);
-                        Swal.fire({icon:'error', title:'执行中断', text:err.message});
+                        // 出错时，停止 Loading，显示错误面板
+                        clearInterval(timer); 
+                        isGenerating.value = false; 
+                        genProgress.value = 0;
+                        lastApiError.value = err.message; // <--- 重点：暴露错误给用户
+                        logAction('请求异常', userName.value, err.message);
                     }
                 };
 
@@ -931,16 +945,16 @@ ${wPrompt}
                 const getModuleData = module => {
                     if (!todayReport.value || !todayReport.value.moduleData) return null;
                     return todayReport.value.moduleData.find(d => 
-                        d.moduleId === module.id || 
-                        d.moduleId === module.name ||
+                        d.moduleId === module.name || 
+                        d.moduleId === module.id ||
                         (d.moduleId && typeof d.moduleId === 'string' && (d.moduleId.includes(module.id) || d.moduleId.includes(module.name) || module.name.includes(d.moduleId)))
                     );
                 };
                 const getWebsiteData = site => {
                     if (!todayReport.value || !todayReport.value.websiteData) return null;
                     return todayReport.value.websiteData.find(d => 
-                        d.siteId === site.id || 
-                        d.siteId === site.name ||
+                        d.siteId === site.name || 
+                        d.siteId === site.id ||
                         (d.siteId && typeof d.siteId === 'string' && (d.siteId.includes(site.id) || d.siteId.includes(site.name) || site.name.includes(d.siteId)))
                     );
                 };
@@ -961,7 +975,7 @@ ${wPrompt}
                         return { dayNum: i+1, dateStr: dStr, hasReport: rSet.has(dStr), isToday: dStr===todayStr };
                     });
                 });
-                const selectDate = (day) => { todayReport.value = reports.value.find(r=>r.date===day.dateStr); activeTab.value = 'dashboard'; };
+                const selectDate = (day) => { todayReport.value = reports.value.find(r=>r.date===day.dateStr); activeTab.value = 'dashboard'; lastApiError.value = ''; };
 
                 // History
                 const searchQuery = ref('');
@@ -1007,7 +1021,7 @@ ${wPrompt}
 
                 return {
                     isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
-                    isConfigError, // 导出错误标记
+                    isConfigError, lastApiError, // 导出错误标记供前端大屏显示
                     todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
                     highlightText, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
                     hasValidChartData,
