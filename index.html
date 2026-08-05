@@ -169,7 +169,7 @@
                                     <i class="fas fa-search text-5xl text-slate-300"></i>
                                 </div>
                                 <h3 class="text-lg font-black text-slate-700 mb-2">研报智库空缺</h3>
-                                <p class="text-slate-500 text-sm max-w-md mx-auto">大模型尚未对今日的商业模块及核心生态进行解构抓取。请系统管理员手动触发执行，或等待系统设定的自动化定时器介入。</p>
+                                <p class="text-slate-500 text-sm max-w-md mx-auto">大模型尚未对今日的商业模块及核心生态进行解构抓取。<br/><b class="text-sky-600">请点击右上角的“执行全网深度分析引擎”按钮手动触发。</b></p>
                             </div>
                             
                             <!-- 报告内容 -->
@@ -563,7 +563,7 @@
         const localFirebaseConfig = {
             apiKey: "AIzaSyALayTmut_Qt5HHfeDwK-IxUEzLxFujIK8",
             authDomain: "pc-ai-insights.firebaseapp.com",
-            databaseURL: "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app",
+            databaseURL: "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app/",
             projectId: "pc-ai-insights",
             storageBucket: "pc-ai-insights.firebasestorage.app",
             messagingSenderId: "676319801033",
@@ -581,13 +581,17 @@
             fbConfigObj = { apiKey: "mock", projectId: "mock", appId: "1:1:web:1" };
         }
 
+        // --- 核心修复：如果是 Canvas 预览环境，补全 databaseURL 以防止 SDK 报错 ---
+        if (typeof __firebase_config !== 'undefined' && !fbConfigObj.databaseURL && localFirebaseConfig.databaseURL) {
+            fbConfigObj.databaseURL = localFirebaseConfig.databaseURL;
+        }
+
         const firebaseApp = initializeApp(fbConfigObj);
         const auth = getAuth(firebaseApp);
         const db = getDatabase(firebaseApp);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-insight-dashboard';
-        
+
         // 核心修复点：Firebase Realtime Database 路径严格禁止包含 ".", "#", "$", "[", "]" 等字符
-        // 如果是在沙盒环境中，appId 可能会包含 "index.html" 导致包含 "." 字符而崩溃。
         const safeAppId = appId.replace(/[.#$\[\]]/g, '_');
 
         // Utilities
@@ -714,46 +718,46 @@
                         }
                     }
                     onAuthStateChanged(auth, u => {
-                        user.value = u;
-                        if (u) loadDatabaseData();
-                    });
+                    user.value = u;
+                    if (u) loadDatabaseData();
+                });
+            });
+
+            // Load Data using Realtime Database
+            const loadDatabaseData = () => {
+                const settingsPath = dbRef(db, `artifacts/${safeAppId}/settings/config`);
+                onValue(settingsPath, (snap) => {
+                    const data = snap.val();
+                    if (data) {
+                        Object.assign(settings, data);
+                        if (settings.deepseekBaseUrl === 'https://api.deepseek.com/chat/completions') settings.deepseekBaseUrl = 'https://api.deepseek.com';
+                        if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
+                    }
+                    else set(settingsPath, settings);
+                    isLoading.value = false;
+                });
+                
+                const reportsPath = dbRef(db, `artifacts/${safeAppId}/reports`);
+                onValue(reportsPath, (snap) => {
+                    const data = snap.val() || {};
+                    const res = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>new Date(b.date)-new Date(a.date));
+                    reports.value = res;
+                    todayReport.value = res.find(r => r.date === todayStr) || null;
                 });
 
-                // Load Data using Realtime Database
-                const loadDatabaseData = () => {
-                    const settingsPath = dbRef(db, `artifacts/${safeAppId}/settings/config`);
-                    onValue(settingsPath, (snap) => {
-                        const data = snap.val();
-                        if (data) {
-                            Object.assign(settings, data);
-                            if (settings.deepseekBaseUrl === 'https://api.deepseek.com/chat/completions') settings.deepseekBaseUrl = 'https://api.deepseek.com';
-                            if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
-                        }
-                        else set(settingsPath, settings);
-                        isLoading.value = false;
-                    });
+                const logsPath = dbRef(db, `artifacts/${safeAppId}/logs`);
+                onValue(logsPath, (snap) => {
+                    const data = snap.val() || {};
+                    logs.value = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>b.timestamp-a.timestamp);
+                });
+            };
 
-                    const reportsPath = dbRef(db, `artifacts/${safeAppId}/reports`);
-                    onValue(reportsPath, (snap) => {
-                        const data = snap.val() || {};
-                        const res = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>new Date(b.date)-new Date(a.date));
-                        reports.value = res;
-                        todayReport.value = res.find(r => r.date === todayStr) || null;
-                    });
+            const logAction = async (action, targetName, details = '') => {
+                const logId = Date.now() + Math.random().toString(36).substr(2, 6);
+                await set(dbRef(db, `artifacts/${safeAppId}/logs/${logId}`), { timestamp: Date.now(), userName: targetName, action, details });
+            };
 
-                    const logsPath = dbRef(db, `artifacts/${safeAppId}/logs`);
-                    onValue(logsPath, (snap) => {
-                        const data = snap.val() || {};
-                        logs.value = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>b.timestamp-a.timestamp);
-                    });
-                };
-
-                const logAction = async (action, targetName, details = '') => {
-                    const logId = Date.now() + Math.random().toString(36).substr(2, 6);
-                    await set(dbRef(db, `artifacts/${safeAppId}/logs/${logId}`), { timestamp: Date.now(), userName: targetName, action, details });
-                };
-
-                const handleLogin = () => {
+            const handleLogin = () => {
                     const name = loginForm.name.trim();
                     if (!name) return Swal.fire({icon:'error', title:'登录失败', text:'请输入真实姓名'});
                     if (loginForm.pwd === settings.passwords.admin) {
@@ -831,21 +835,34 @@
                         }
 
                         if(!text) throw new Error("大模型无返回。");
-                        
-                        let data;
-                        try { data = JSON.parse(text.replace(/```json/g,'').replace(/```/g,'').trim()); } catch(e){ throw new Error("JSON结构损坏！"); }
-                        
-                        clearInterval(timer); genProgress.value = 98;
-                        await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), {
-                            date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
-                        });
-                        logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
-                        genProgress.value = 100;
-                        setTimeout(() => isGenerating.value = false, 800);
-                        Swal.fire({icon:'success', title:'生成成功', text:'全网深度研报已入档！', timer:2000, showConfirmButton:false});
+                    
+                    let data;
+                    try { 
+                        // 终极修复：彻底剥离 DeepSeek 返回的 <think> 推理过程标签，确保 JSON 解析万无一失
+                        let cleanText = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                        cleanText = cleanText.replace(/```json/g,'').replace(/```/g,'').trim();
+                        const firstBrace = cleanText.indexOf('{');
+                        const lastBrace = cleanText.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1) {
+                            cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+                        }
+                        data = JSON.parse(cleanText); 
+                    } catch(e) { 
+                        console.error("Original text from model:", text);
+                        throw new Error("大模型返回的数据格式异常，无法解析为 JSON！请重试。"); 
+                    }
+                    
+                    clearInterval(timer); genProgress.value = 98;
+                    await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), {
+                        date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
+                    });
+                    logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
+                    genProgress.value = 100;
+                    setTimeout(() => isGenerating.value = false, 800);
+                    Swal.fire({icon:'success', title:'生成成功', text:'全网深度研报已入档！', timer:2000, showConfirmButton:false});
 
-                    } catch (err) {
-                        clearInterval(timer); isGenerating.value = false; genProgress.value = 0;
+                } catch (err) {
+                    clearInterval(timer); isGenerating.value = false; genProgress.value = 0;
                         logAction('生成异常', userName.value, err.message);
                         Swal.fire({icon:'error', title:'执行中断', text:err.message});
                     }
@@ -905,34 +922,34 @@
                 const formatTime = ts => { const d=new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
 
                 // Settings Admin
-                const addWhitelist = () => { if(newWLName.value.trim() && !settings.whitelist.includes(newWLName.value.trim())) { settings.whitelist.push(newWLName.value.trim()); newWLName.value=''; } };
-                const saveSettings = async () => {
-                    isSaving.value = true;
-                    try {
-                        const payload = JSON.parse(JSON.stringify(settings));
-                        
-                        const saveTask = update(dbRef(db, `artifacts/${safeAppId}/settings/config`), payload);
-                        
-                        await Promise.race([
-                            saveTask,
-                            new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 8000))
-                        ]);
+            const addWhitelist = () => { if(newWLName.value.trim() && !settings.whitelist.includes(newWLName.value.trim())) { settings.whitelist.push(newWLName.value.trim()); newWLName.value=''; } };
+            const saveSettings = async () => {
+                isSaving.value = true;
+                try {
+                    const payload = JSON.parse(JSON.stringify(settings));
+                    
+                    const saveTask = update(dbRef(db, `artifacts/${safeAppId}/settings/config`), payload);
+                    
+                    await Promise.race([
+                        saveTask,
+                        new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 8000))
+                    ]);
 
-                        logAction('更新配置', userName.value, '管理员全量保存系统策略');
-                        Swal.fire({icon:'success', title:'生效', text:'AI策略与安防规则已成功部署', timer:1500, showConfirmButton:false});
-                    } catch(e) { 
-                        console.error("保存失败:", e);
-                        if (e.message === "TIMEOUT") {
-                            Swal.fire({icon:'error', title:'保存请求超时', html:'网络被拦截，或数据库规则拒绝写入'});
-                        } else {
-                            Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'});
-                        }
-                    } finally {
-                        isSaving.value = false;
+                    logAction('更新配置', userName.value, '管理员全量保存系统策略');
+                    Swal.fire({icon:'success', title:'生效', text:'AI策略与安防规则已成功部署', timer:1500, showConfirmButton:false});
+                } catch(e) { 
+                    console.error("保存失败:", e);
+                    if (e.message === "TIMEOUT") {
+                        Swal.fire({icon:'error', title:'保存请求超时', html:'网络被拦截，或数据库规则拒绝写入'});
+                    } else {
+                        Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'});
                     }
-                };
+                } finally {
+                    isSaving.value = false;
+                }
+            };
 
-                return {
+            return {
                     isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
                     isConfigError, // 导出错误标记
                     todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
