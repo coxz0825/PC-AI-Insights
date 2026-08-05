@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>平板与PC信息洞察平台</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+        [v-cloak] { display: none; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f8fafc; }
+        .bg-cubes { background-image: url('https://www.transparenttextures.com/patterns/cubes.png'); background-attachment: fixed; }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak class="h-screen flex w-full">
+
+        <!-- 全局 Loading -->
+        <div v-if="isLoading" class="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-center justify-center bg-cubes text-white">
+            <i class="fas fa-circle-notch fa-spin fa-3x text-sky-500 mb-6"></i>
+            <h2 class="text-xl font-bold tracking-widest">环境初始化中...</h2>
+            <p v-if="authError" class="mt-4 text-red-400 text-sm max-w-md text-center px-4 bg-red-900/30 py-2 rounded">{{ authError }}</p>
+        </div>
+
+        <!-- 登录界面 -->
+        <div v-else-if="!appRole" class="min-h-screen w-full bg-slate-900 flex items-center justify-center p-4 bg-cubes">
+            <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden border-t-4 border-sky-600">
+                <div class="flex flex-col items-center mb-8">
+                    <div class="w-14 h-14 bg-sky-100 rounded-xl flex items-center justify-center mb-4 shadow-inner">
+                        <i class="fas fa-lock text-2xl text-sky-600"></i>
+                    </div>
+                    <h2 class="text-2xl font-black text-slate-800 tracking-wider">平板与PC信息洞察平台</h2>
+                    <p class="text-slate-500 font-medium text-xs mt-2 uppercase tracking-widest">Tablet & PC Intelligence</p>
+                </div>
+                
+                <form @submit.prevent="handleLogin" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Authorized Name</label>
+                        <div class="relative">
+                            <i class="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" v-model="loginForm.name" placeholder="您的真实中文姓名" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none font-bold text-sm text-slate-800" required>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Access Credential</label>
+                        <div class="relative">
+                            <i class="fas fa-shield-alt absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="password" v-model="loginForm.pwd" placeholder="系统验证口令" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none font-bold text-sm text-slate-800" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-lg shadow-lg transition-all uppercase tracking-widest text-sm mt-4">
+                        Enter Platform
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 主系统框架 -->
+        <template v-else>
+            <!-- 侧边栏 -->
+            <aside class="w-64 bg-slate-900 shadow-xl flex flex-col z-20 flex-shrink-0 text-slate-300">
+                <div class="p-6 bg-slate-950 flex items-center gap-3 border-b border-slate-800">
+                    <div class="w-10 h-10 bg-sky-600 rounded-lg flex items-center justify-center shadow-lg">
+                        <i class="fas fa-book-open text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white font-black text-lg tracking-wide leading-tight">平板与PC信息洞察</h1>
+                        <p class="text-sky-400 text-[10px] uppercase font-bold tracking-widest mt-1">Tablet & PC Insight</p>
+                    </div>
+                </div>
+                
+                <nav class="flex-1 p-4 space-y-1.5 overflow-y-auto custom-scrollbar">
+                    <button @click="activeTab = 'dashboard'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'dashboard' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                        <i class="fas fa-chart-bar w-5 text-center"></i><span class="text-sm tracking-wide">今日宏观研报</span>
+                    </button>
+                    <button @click="activeTab = 'calendar'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'calendar' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                        <i class="fas fa-calendar-alt w-5 text-center"></i><span class="text-sm tracking-wide">行业日历归档</span>
+                    </button>
+                    <button @click="activeTab = 'history'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'history' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                        <i class="fas fa-database w-5 text-center"></i><span class="text-sm tracking-wide">历史数据库</span>
+                    </button>
+                    
+                    <template v-if="appRole === 'admin'">
+                        <div class="mt-8 mb-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Administrator</div>
+                        <button @click="activeTab = 'settings'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'settings' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                            <i class="fas fa-cog w-5 text-center"></i><span class="text-sm tracking-wide">研报模型配置</span>
+                        </button>
+                        <button @click="activeTab = 'logs'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'logs' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                            <i class="fas fa-shield-alt w-5 text-center"></i><span class="text-sm tracking-wide">审计安全日志</span>
+                        </button>
+                    </template>
+                </nav>
+
+                <div class="p-5 bg-slate-950 border-t border-slate-800">
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Authorized User</span>
+                            <div class="flex items-center gap-1.5 text-sm font-bold text-slate-200">
+                                <i class="fas fa-user text-sky-400 text-xs"></i> {{ userName }}
+                            </div>
+                        </div>
+                        <button @click="handleLogout" class="text-slate-500 hover:text-red-400 transition-colors bg-slate-800/50 p-2 rounded-lg" title="退出系统">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 右侧主内容区 -->
+            <main class="flex-1 overflow-y-auto relative bg-cubes z-10 w-full h-full pb-24">
+                <div class="absolute top-0 left-0 right-0 h-72 bg-gradient-to-b from-sky-50 to-transparent pointer-events-none"></div>
+                
+                <div class="relative z-10 p-6 lg:p-10 max-w-[1400px] mx-auto min-h-full">
+                    
+                    <!-- 1. 仪表盘 (Dashboard) -->
+                    <div v-if="activeTab === 'dashboard'" class="space-y-8 animate-[fadeIn_0.5s_ease-out]">
+                        <!-- 头部 Header -->
+                        <div class="bg-white rounded-none shadow-sm border-t-8 border-t-slate-800 border-x border-b border-slate-200 p-8 md:p-12">
+                            <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b-2 border-slate-800 pb-6 mb-6">
+                                <div>
+                                    <div class="text-sky-600 font-bold tracking-widest text-xs uppercase mb-3 flex items-center gap-2">
+                                        <i class="fas fa-bolt"></i> 宏观行业研报系统
+                                    </div>
+                                    <h1 class="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">深度商业洞察与战略分析</h1>
+                                    <p class="text-slate-500 font-medium mt-3 flex items-center gap-4">
+                                        <span>发行基准日: <strong class="text-slate-800">{{ todayStr }}</strong></span>
+                                        <span class="text-slate-400">| 配置定时运行: <strong class="text-slate-700">{{ settings.autoRunTime }}</strong></span>
+                                        <span v-if="todayReport" class="flex items-center gap-1 text-green-700 bg-green-50 px-2.5 py-0.5 rounded text-xs font-bold"><i class="fas fa-check-circle"></i> 报告已生成</span>
+                                        <span v-else class="flex items-center gap-1 text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded text-xs font-bold"><i class="fas fa-exclamation-circle"></i> 待自动化抓取</span>
+                                    </p>
+                                </div>
+                                <div class="flex flex-col items-end gap-4">
+                                    <div class="flex items-center gap-4 text-right border-l-4 border-slate-200 pl-6">
+                                        <div>
+                                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">活跃读者</div>
+                                            <div class="text-xl font-black text-slate-800">{{ stats.uniqueUsers }}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">系统交互</div>
+                                            <div class="text-xl font-black text-slate-800">{{ stats.loginsToday }}</div>
+                                        </div>
+                                    </div>
+                                    <button v-if="appRole === 'admin'" @click="generateDailyReport" :disabled="isGenerating" class="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-5 py-2.5 rounded shadow-md transition-all disabled:opacity-50 text-sm font-bold">
+                                        <i :class="['fas', isGenerating ? 'fa-spinner fa-spin' : 'fa-sync']"></i>
+                                        {{ todayReport ? '重新强制刷新生成' : '执行全网深度分析引擎' }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 空状态 -->
+                            <div v-if="!todayReport" class="py-20 text-center">
+                                <div class="inline-block p-6 rounded-full bg-slate-50 mb-4 border border-slate-100">
+                                    <i class="fas fa-search text-5xl text-slate-300"></i>
+                                </div>
+                                <h3 class="text-lg font-black text-slate-700 mb-2">研报智库空缺</h3>
+                                <p class="text-slate-500 text-sm max-w-md mx-auto">大模型尚未对今日的商业模块及核心生态进行解构抓取。请系统管理员手动触发执行，或等待系统设定的自动化定时器介入。</p>
+                            </div>
+                            
+                            <!-- 报告内容 -->
+                            <div v-else class="space-y-12">
+                                <!-- 摘要 -->
+                                <section>
+                                    <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-5 uppercase tracking-wide">
+                                        <i class="fas fa-quote-left text-sky-600"></i> 执行摘要 <span class="text-sm font-medium text-slate-400 capitalize">Executive Summary</span>
+                                    </h2>
+                                    <div class="bg-slate-50/50 p-6 rounded-lg border border-slate-200 text-slate-700 text-lg leading-loose font-medium text-justify whitespace-pre-wrap">
+                                        {{ todayReport.summary }}
+                                    </div>
+                                </section>
+
+                                <!-- 模块分析 -->
+                                <section>
+                                    <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                        <i class="fas fa-chart-bar text-sky-600"></i> 行业核心模块剖析 <span class="text-sm font-medium text-slate-400 capitalize">Industry Modules Analysis</span>
+                                    </h2>
+                                    
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                        <article v-for="(module, idx) in settings.modules" :key="module.id" class="bg-white border border-slate-200 shadow-sm rounded-lg flex flex-col overflow-hidden">
+                                            <div class="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                                                <h3 class="font-black text-white text-lg flex items-center gap-2">
+                                                    <span class="bg-sky-500 text-white text-xs px-2 py-0.5 rounded-sm">0{{ idx + 1 }}</span>
+                                                    {{ module.name }}
+                                                </h3>
+                                                <div v-if="getModuleData(module.id)?.sentiment" :class="['text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded-sm whitespace-nowrap', getSentimentClass(getModuleData(module.id).sentiment)]">
+                                                    {{ getSentimentText(getModuleData(module.id).sentiment) }}
+                                                </div>
+                                            </div>
+                                            <div class="p-6 flex-1 flex flex-col">
+                                                <div v-if="getModuleData(module.id)?.deconstructedIntents?.length" class="mb-5">
+                                                    <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">AI 智能解构维度</div>
+                                                    <div class="flex flex-wrap gap-2">
+                                                        <span v-for="intent in getModuleData(module.id).deconstructedIntents" class="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2.5 py-1 rounded-sm font-semibold">{{ intent }}</span>
+                                                    </div>
+                                                </div>
+                                                <div class="text-slate-700 text-sm leading-loose text-justify mb-6 flex-1" v-html="highlightText(getModuleData(module.id)?.content, getModuleData(module.id)?.deconstructedIntents)">
+                                                </div>
+                                                <!-- 来源 -->
+                                                <div v-if="getModuleData(module.id)?.sources?.length" class="mt-auto pt-5 border-t border-dashed border-slate-200">
+                                                    <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 flex items-center gap-1"><i class="fas fa-link"></i> 溯源与参考资料</div>
+                                                    <ul class="space-y-2">
+                                                        <li v-for="(src, i) in getModuleData(module.id).sources" class="text-xs flex items-start gap-1.5">
+                                                            <span class="text-slate-400 font-bold">[{{ i+1 }}]</span>
+                                                            <a :href="src.url" target="_blank" class="text-sky-600 hover:text-sky-800 hover:underline line-clamp-1 flex-1 font-medium">{{ src.title || src.url }}</a>
+                                                        </li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    </div>
+                                </section>
+
+                                <!-- 核心生态 -->
+                                <section>
+                                    <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                        <i class="fas fa-globe text-sky-600"></i> 核心竞品生态动向 <span class="text-sm font-medium text-slate-400 capitalize">Ecosystem Dynamics</span>
+                                    </h2>
+                                    <div class="space-y-6">
+                                        <div v-for="site in settings.coreWebsites" :key="site.id" class="bg-slate-50 border border-slate-200 rounded-lg p-6 lg:p-8 flex flex-col md:flex-row gap-6">
+                                            <div class="md:w-1/4">
+                                                <h4 class="font-black text-slate-900 text-lg mb-2">{{ site.name }}</h4>
+                                                <div class="w-8 h-1 bg-sky-600 mb-4"></div>
+                                                <p class="text-xs text-slate-500 leading-relaxed font-medium">系统配置的针对性长期监控目标，深入挖掘其服务模式与战略步伐。</p>
+                                            </div>
+                                            <div class="md:w-3/4 flex flex-col border-l border-slate-200 md:pl-6">
+                                                <div class="text-slate-700 text-sm leading-loose text-justify mb-6 whitespace-pre-wrap">
+                                                    {{ getWebsiteData(site.id)?.content || '暂无分析数据，大模型响应缺省。' }}
+                                                </div>
+                                                <div v-if="getWebsiteData(site.id)?.sources?.length" class="mt-auto bg-white border border-slate-200 p-4 rounded-md">
+                                                    <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2 flex items-center gap-1"><i class="fas fa-link"></i> 情报来源</div>
+                                                    <ul class="space-y-1.5">
+                                                        <li v-for="(src, i) in getWebsiteData(site.id).sources" class="text-xs flex items-center gap-1.5">
+                                                            <span class="text-slate-400 font-bold">[{{ i+1 }}]</span>
+                                                            <a :href="src.url" target="_blank" class="text-sky-600 hover:underline line-clamp-1 font-medium">{{ src.title || src.url }}</a>
+                                                        </li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <!-- ECharts 可视化图表 -->
+                                <section>
+                                     <h2 class="text-xl font-black text-slate-900 flex items-center gap-3 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                        <i class="fas fa-chart-line text-sky-600"></i> 数据分布图谱 <span class="text-sm font-medium text-slate-400 capitalize">Data Distribution</span>
+                                    </h2>
+                                    <div class="bg-white p-6 border border-slate-200 rounded-lg h-[400px]">
+                                        <div id="mainChart" class="w-full h-full"></div>
+                                    </div>
+                                </section>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. 日历 (Calendar) -->
+                    <div v-else-if="activeTab === 'calendar'" class="bg-white rounded-none shadow-sm border border-slate-200 overflow-hidden max-w-5xl mx-auto animate-[fadeIn_0.5s_ease-out]">
+                        <div class="p-6 md:p-8 flex items-center justify-between border-b-4 border-slate-800 bg-white">
+                            <div>
+                                <h2 class="text-2xl font-black text-slate-900 flex items-center gap-3 tracking-wide">
+                                    <i class="fas fa-calendar-alt text-sky-600"></i> 行业智库日历
+                                </h2>
+                                <p class="text-xs text-slate-500 font-bold uppercase tracking-widest mt-2">Historical Archive</p>
+                            </div>
+                            <div class="flex items-center gap-4 bg-slate-100 px-2 py-1.5 rounded border border-slate-200">
+                                <button @click="changeMonth(-1)" class="p-1.5 hover:bg-white rounded transition-colors text-slate-600 shadow-sm"><i class="fas fa-chevron-left"></i></button>
+                                <span class="font-black text-slate-800 w-32 text-center text-sm tracking-widest">{{ currentMonthStr }}</span>
+                                <button @click="changeMonth(1)" class="p-1.5 hover:bg-white rounded transition-colors text-slate-600 shadow-sm"><i class="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50">
+                            <div v-for="d in ['SUN','MON','TUE','WED','THU','FRI','SAT']" class="py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{{ d }}</div>
+                        </div>
+                        <div class="grid grid-cols-7 bg-white">
+                            <!-- 空白占位 -->
+                            <div v-for="i in calendarFirstDay" class="p-4 border border-slate-100 bg-slate-50/30"></div>
+                            <!-- 实际天数 -->
+                            <button v-for="day in calendarDays" :key="day.dateStr" @click="selectDate(day)" :disabled="!day.hasReport" :class="['p-3 md:p-5 min-h-[100px] border border-slate-100 flex flex-col items-start justify-start relative transition-all', day.hasReport ? 'hover:bg-sky-50 hover:border-sky-200 cursor-pointer bg-white group' : 'bg-slate-50/50 cursor-default text-slate-300', day.isToday ? 'ring-2 ring-slate-800 ring-inset z-10' : '']">
+                                <span :class="['font-black text-lg', day.isToday ? 'text-slate-900' : (day.hasReport ? 'text-slate-700' : 'text-slate-300')]">{{ day.dayNum }}</span>
+                                <div v-if="day.hasReport" class="mt-auto w-full text-left">
+                                    <span class="inline-flex items-center gap-1 text-[10px] bg-slate-800 text-white px-2 py-0.5 rounded-sm font-bold uppercase tracking-wider group-hover:bg-sky-600 transition-colors">
+                                        <i class="fas fa-file-alt"></i> Report
+                                    </span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 3. 历史记录 (History) -->
+                    <div v-else-if="activeTab === 'history'" class="space-y-8 animate-[fadeIn_0.5s_ease-out] max-w-5xl mx-auto">
+                        <div class="bg-slate-900 p-8 rounded-lg shadow-lg border border-slate-800 text-white">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                <div>
+                                    <h2 class="text-2xl font-black flex items-center gap-3 tracking-wide"><i class="fas fa-file-alt text-sky-400"></i> 全局研报检索系统</h2>
+                                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">Global Search Engine</p>
+                                </div>
+                                <div class="relative w-full md:w-[400px]">
+                                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                                    <input type="text" v-model="searchQuery" placeholder="输入宏观关键字或日期查询..." class="w-full pl-12 pr-4 py-3.5 bg-slate-800/50 border border-slate-700 rounded-md focus:border-sky-500 outline-none font-medium text-sm text-white placeholder-slate-500 transition-colors">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div v-if="filteredReports.length === 0" class="text-center py-24 bg-white rounded-lg border border-slate-200">
+                                <i class="fas fa-search text-5xl text-slate-200 mb-4 block"></i>
+                                <p class="text-slate-500 font-bold">资料库中未检索到匹配记录。</p>
+                            </div>
+                            <div v-else v-for="report in paginatedReports" :key="report.id" class="bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row overflow-hidden group">
+                                <div class="md:w-48 bg-slate-50 border-r border-slate-200 p-6 flex flex-col justify-center items-center text-center">
+                                    <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Publish Date</div>
+                                    <div class="text-xl font-black text-slate-800">{{ report.date }}</div>
+                                    <div class="mt-4 bg-sky-100 text-sky-700 text-[10px] font-bold px-3 py-1 rounded-sm uppercase">已归档</div>
+                                </div>
+                                <div class="p-6 flex-1">
+                                    <h4 class="text-xs font-bold text-sky-600 mb-3 flex items-center gap-2 uppercase tracking-widest"><i class="fas fa-eye"></i> 宏观摘要</h4>
+                                    <p class="text-slate-700 text-sm leading-relaxed text-justify line-clamp-4">{{ report.summary }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="historyTotalPages > 1" class="flex justify-center items-center gap-4 mt-8 bg-white p-4 rounded-lg border border-slate-200">
+                            <button @click="historyPage--" :disabled="historyPage === 1" class="p-2 bg-slate-50 border border-slate-200 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30"><i class="fas fa-chevron-left"></i></button>
+                            <span class="text-xs font-black text-slate-600 tracking-widest">PAGE {{ historyPage }} OF {{ historyTotalPages }}</span>
+                            <button @click="historyPage++" :disabled="historyPage === historyTotalPages" class="p-2 bg-slate-50 border border-slate-200 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30"><i class="fas fa-chevron-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- 4. 设置 (Settings - Admin) -->
+                    <div v-else-if="activeTab === 'settings' && appRole === 'admin'" class="max-w-5xl mx-auto space-y-8 animate-[fadeIn_0.5s_ease-out] pb-10">
+                        <div class="bg-slate-900 p-8 rounded-lg shadow-lg border border-slate-800 text-white flex flex-col md:flex-row justify-between items-center gap-6">
+                            <div>
+                                <h2 class="text-2xl font-black tracking-wide">研报模型指令与安全管控面板</h2>
+                                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">AI Config & Security Control Center</p>
+                            </div>
+                            <button @click="saveSettings" :disabled="isSaving" class="bg-sky-600 hover:bg-sky-500 text-white px-8 py-3.5 rounded font-black shadow-md transition-all disabled:opacity-50 text-sm tracking-widest uppercase">
+                                {{ isSaving ? 'Deploying...' : 'Deploy Changes' }}
+                            </button>
+                        </div>
+
+                        <!-- 业务模块配置 -->
+                        <section class="bg-white border-t-4 border-t-sky-600 border-x border-b border-slate-200 rounded-b-lg p-8 shadow-sm">
+                            <h3 class="text-lg font-black text-slate-900 flex items-center gap-2 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                <i class="fas fa-cog text-sky-600"></i> 第一部分：行业宏观模块定义
+                            </h3>
+                            <div class="space-y-6">
+                                <div v-for="(mod, idx) in settings.modules" :key="mod.id" class="p-6 border border-slate-200 rounded-md bg-slate-50 relative group">
+                                    <div class="absolute top-0 left-0 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded-br-md">MODULE {{ idx+1 }}</div>
+                                    <button @click="settings.modules.splice(idx, 1)" class="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors bg-white p-1.5 rounded shadow-sm border border-slate-200"><i class="fas fa-trash"></i></button>
+                                    <div class="mt-4 grid grid-cols-1 md:grid-cols-[250px_1fr] gap-6">
+                                        <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">板块呈现名称 (勿乱改)</label><input type="text" v-model="mod.name" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none font-bold text-slate-900 focus:border-sky-500"></div>
+                                        <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">详细跟踪指令(自然语言)</label><textarea v-model="mod.description" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none text-slate-700 focus:border-sky-500 min-h-[100px]"></textarea></div>
+                                    </div>
+                                    <div class="mt-2 text-xs text-slate-400">系统绑定ID: {{ mod.id }}</div>
+                                </div>
+                                <button @click="settings.modules.push({id: 'm'+Date.now(), name:'新模块', description:''})" class="w-full py-4 border-2 border-dashed border-slate-300 rounded-md text-slate-500 font-bold hover:bg-slate-50 flex items-center justify-center gap-2"><i class="fas fa-plus"></i> 新增行业分析模块</button>
+                            </div>
+                        </section>
+
+                        <!-- 核心生态配置 -->
+                        <section class="bg-white border-t-4 border-t-indigo-600 border-x border-b border-slate-200 rounded-b-lg p-8 shadow-sm">
+                            <h3 class="text-lg font-black text-slate-900 flex items-center gap-2 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                <i class="fas fa-globe text-indigo-600"></i> 第二部分：核心竞品与生态池设定
+                            </h3>
+                            <div class="space-y-6">
+                                <div v-for="(site, idx) in settings.coreWebsites" :key="site.id" class="p-6 border border-slate-200 rounded-md bg-slate-50 relative group">
+                                    <div class="absolute top-0 left-0 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-md">ECOSYSTEM {{ idx+1 }}</div>
+                                    <button @click="settings.coreWebsites.splice(idx, 1)" class="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors bg-white p-1.5 rounded shadow-sm border border-slate-200"><i class="fas fa-trash"></i></button>
+                                    <div class="mt-4 grid grid-cols-1 md:grid-cols-[250px_1fr] gap-6">
+                                        <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">生态/竞品名称</label><input type="text" v-model="site.name" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none font-bold text-slate-900 focus:border-indigo-500"></div>
+                                        <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">战略追踪描述 / 备用策略</label><textarea v-model="site.description" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-md text-sm outline-none text-slate-700 focus:border-indigo-500 min-h-[100px]"></textarea></div>
+                                    </div>
+                                    <div class="mt-2 text-xs text-slate-400">系统绑定ID: {{ site.id }}</div>
+                                </div>
+                                <button @click="settings.coreWebsites.push({id: 'w'+Date.now(), name:'新生态', description:''})" class="w-full py-4 border-2 border-dashed border-slate-300 rounded-md text-slate-500 font-bold hover:bg-slate-50 flex items-center justify-center gap-2"><i class="fas fa-plus"></i> 增加核心生态监控池</button>
+                            </div>
+                        </section>
+
+                        <!-- 安全管控 -->
+                        <section class="bg-white border-t-4 border-t-slate-800 border-x border-b border-slate-200 rounded-b-lg p-8 shadow-sm">
+                            <h3 class="text-lg font-black text-slate-900 flex items-center gap-2 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                <i class="fas fa-shield-alt text-slate-800"></i> 第三部分：系统鉴权与安防管理
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                <div class="bg-slate-50 p-5 rounded-md border border-slate-200">
+                                    <label class="block text-xs font-bold text-slate-500 uppercase mb-3">Admin Credential (超管密码)</label>
+                                    <input type="text" v-model="settings.passwords.admin" class="w-full px-4 py-3 border border-slate-200 rounded-md focus:border-sky-500 outline-none font-bold">
+                                </div>
+                                <div class="bg-slate-50 p-5 rounded-md border border-slate-200">
+                                    <label class="block text-xs font-bold text-slate-500 uppercase mb-3">Viewer Credential (阅读密码)</label>
+                                    <input type="text" v-model="settings.passwords.viewer" class="w-full px-4 py-3 border border-slate-200 rounded-md focus:border-sky-500 outline-none font-bold">
+                                </div>
+                            </div>
+                            <!-- 白名单 -->
+                            <div class="border-t border-slate-200 pt-8">
+                                <div class="flex items-center gap-4 mb-4">
+                                    <input type="checkbox" v-model="settings.whitelistMode" id="wlMode" class="w-5 h-5 accent-slate-900">
+                                    <label for="wlMode" class="font-black text-slate-900 text-lg cursor-pointer">开启强实名白名单拦截策略</label>
+                                </div>
+                                <div v-if="settings.whitelistMode" class="p-6 bg-slate-50 rounded border border-slate-200">
+                                    <div class="flex gap-3 mb-4">
+                                        <input type="text" v-model="newWLName" placeholder="录入授权中文名..." class="flex-1 px-4 py-3 border border-slate-200 rounded text-sm font-bold">
+                                        <button @click="addWhitelist" class="bg-slate-800 text-white px-6 rounded font-bold uppercase text-sm">Add</button>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <div v-for="(name, idx) in settings.whitelist" :key="idx" class="bg-white border border-slate-300 text-slate-800 px-4 py-2 rounded font-bold text-sm flex gap-3 shadow-sm">
+                                            {{ name }} <button @click="settings.whitelist.splice(idx, 1)" class="text-slate-400 hover:text-red-500"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                        
+                        <!-- AI 引擎配置 -->
+                        <section class="bg-white border-t-4 border-t-emerald-500 border-x border-b border-slate-200 rounded-b-lg p-8 shadow-sm">
+                            <h3 class="text-lg font-black text-slate-900 flex items-center gap-2 mb-6 uppercase tracking-wide border-b-2 border-slate-100 pb-4">
+                                <i class="fas fa-microchip text-emerald-500"></i> 第四部分：大模型引擎配置
+                            </h3>
+                            <div class="space-y-6">
+                                <div class="bg-slate-50 p-6 rounded-md border border-slate-200 flex flex-col md:flex-row gap-6">
+                                    <div class="md:w-1/3">
+                                        <span class="font-bold text-slate-900 text-sm mb-1 block">选择核心驱动模型</span>
+                                    </div>
+                                    <div class="md:w-2/3 flex flex-col sm:flex-row gap-4">
+                                        <label :class="['flex-1 p-4 rounded-md border-2 cursor-pointer transition-all', settings.llmProvider === 'gemini' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white']">
+                                            <input type="radio" v-model="settings.llmProvider" value="gemini" class="hidden">
+                                            <div class="font-bold text-slate-800"><i class="fas fa-globe text-emerald-600"></i> Google Gemini (联网)</div>
+                                        </label>
+                                        <label :class="['flex-1 p-4 rounded-md border-2 cursor-pointer transition-all', settings.llmProvider === 'deepseek' ? 'border-sky-500 bg-sky-50' : 'border-slate-200 bg-white']">
+                                            <input type="radio" v-model="settings.llmProvider" value="deepseek" class="hidden">
+                                            <div class="font-bold text-slate-800"><i class="fas fa-brain text-sky-600"></i> DeepSeek (推理)</div>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div v-if="settings.llmProvider === 'gemini'" class="bg-emerald-50/50 p-6 rounded-md border border-emerald-100">
+                                    <label class="block font-bold text-sm mb-2">Gemini API Key (留空使用默认)</label>
+                                    <input type="password" v-model="settings.geminiApiKey" placeholder="AIzaSy..." class="w-full px-4 py-3 border border-slate-300 rounded font-bold shadow-sm">
+                                </div>
+                                
+                                <div v-if="settings.llmProvider === 'deepseek'" class="bg-sky-50/50 p-6 rounded-md border border-sky-100 space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block font-bold text-sm mb-2">Base URL (OpenAI 兼容)</label>
+                                            <input type="text" v-model="settings.deepseekBaseUrl" placeholder="https://api.deepseek.com" class="w-full px-4 py-3 border rounded font-mono text-sm shadow-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block font-bold text-sm mb-2">Model Name</label>
+                                            <input type="text" v-model="settings.deepseekModel" placeholder="deepseek-v4-pro" class="w-full px-4 py-3 border rounded font-mono text-sm shadow-sm">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold text-sm mb-2">DeepSeek API Key (必填)</label>
+                                        <input type="password" v-model="settings.deepseekApiKey" placeholder="sk-..." class="w-full px-4 py-3 border border-slate-300 rounded font-bold shadow-sm">
+                                    </div>
+                                    <p class="text-xs text-sky-700 mt-2"><i class="fas fa-info-circle"></i> 系统会自动拼接端点。支持填写官方 URL 及最新模型 (如 deepseek-v4-pro)。</p>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- 5. 日志 (Logs - Admin) -->
+                    <div v-else-if="activeTab === 'logs' && appRole === 'admin'" class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden animate-[fadeIn_0.5s_ease-out] max-w-6xl mx-auto">
+                        <div class="p-8 border-b border-slate-200 bg-slate-900 flex items-center justify-between text-white">
+                            <h2 class="text-xl font-black flex items-center gap-3 tracking-wide"><i class="fas fa-shield-alt text-sky-400"></i> 系统级安全审计流</h2>
+                            <div class="bg-slate-800 px-4 py-2 rounded text-xs font-bold uppercase">TOTAL: {{ logs.length }}</div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b-2 border-slate-200 text-slate-500 text-[10px] uppercase font-black">
+                                        <th class="p-5 w-48">Timestamp</th>
+                                        <th class="p-5 w-40">Identity</th>
+                                        <th class="p-5 w-40">Action</th>
+                                        <th class="p-5">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm">
+                                    <tr v-for="log in paginatedLogs" :key="log.id" class="border-b border-slate-100 hover:bg-slate-50">
+                                        <td class="p-5 text-slate-500 font-mono text-xs">{{ formatTime(log.timestamp) }}</td>
+                                        <td class="p-5 font-bold text-slate-800">{{ log.userName }}</td>
+                                        <td class="p-5"><span class="px-2.5 py-1 rounded-sm text-[10px] font-bold bg-slate-200 text-slate-700">{{ log.action }}</span></td>
+                                        <td class="p-5 text-slate-600">{{ log.details }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- 日志分页 -->
+                        <div v-if="logsTotalPages > 1" class="flex justify-between p-6 bg-slate-50">
+                            <button @click="logsPage--" :disabled="logsPage===1" class="px-4 py-2 bg-white border rounded font-bold text-xs disabled:opacity-50">Prev</button>
+                            <span class="text-xs font-black text-slate-500">PAGE {{ logsPage }} OF {{ logsTotalPages }}</span>
+                            <button @click="logsPage++" :disabled="logsPage===logsTotalPages" class="px-4 py-2 bg-white border rounded font-bold text-xs disabled:opacity-50">Next</button>
+                        </div>
+                    </div>
+
+                </div>
+                
+                <!-- 版权水印 -->
+                <div class="fixed bottom-6 right-6 z-40 opacity-70 hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-l-full shadow-lg border border-sky-100 flex items-center gap-3">
+                        <div class="w-2.5 h-2.5 bg-sky-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.6)]"></div>
+                        <div class="flex flex-col">
+                            <span class="text-slate-800 font-bold text-xs tracking-wide">平板与PC AI先锋队</span>
+                            <span class="text-slate-400 text-[9px] uppercase tracking-widest">Professional Intelligence</span>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 生成态 Loading 遮罩 -->
+            <div v-if="isGenerating" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center">
+                <div class="bg-white p-10 rounded-2xl shadow-2xl w-[420px] relative overflow-hidden border border-slate-100">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-slate-100">
+                        <div class="h-full bg-sky-600 transition-all duration-300" :style="{width: genProgress + '%'}"></div>
+                    </div>
+                    <div class="flex items-center gap-4 mb-6">
+                        <i class="fas fa-circle-notch fa-spin text-3xl text-sky-600"></i>
+                        <div>
+                            <h3 class="text-lg font-black text-slate-800">深度情报编织中...</h3>
+                            <p class="text-sm text-slate-500">模型正对行业全网资讯进行研报级梳理</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-xl text-xs font-mono text-slate-500 space-y-2 border border-slate-200">
+                        <div class="flex justify-between"><span>[System] AI 意图解构分析</span> <span :class="{'text-green-600 font-bold': genProgress > 10}">{{ genProgress > 10 ? 'OK' : '...' }}</span></div>
+                        <div class="flex justify-between"><span>[Network] 全网信源溯源检索</span> <span :class="{'text-green-600 font-bold': genProgress > 40}">{{ genProgress > 40 ? 'OK' : '...' }}</span></div>
+                        <div class="flex justify-between"><span>[Compute] 宏观趋势专业研判</span> <span :class="{'text-green-600 font-bold': genProgress > 70}">{{ genProgress > 70 ? 'OK' : '...' }}</span></div>
+                        <div class="flex justify-between"><span>[Output] 专业研报文档生成</span> <span :class="{'text-green-600 font-bold': genProgress > 95}">{{ genProgress > 95 ? 'OK' : '...' }}</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </template>
+    </div>
+
+    <!-- Vue 3 CDN (浏览器原生 ESM 版本) -->
+    <script type="module">
+        import { createApp, ref, reactive, computed, onMounted, watch, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+        
+        // --- Firebase Modules via CDN ---
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+        // Firebase Setup
+        const fbConfigObj = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const firebaseApp = initializeApp(fbConfigObj);
+        const auth = getAuth(firebaseApp);
+        const db = getFirestore(firebaseApp);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-insight-dashboard';
+
+        // Utilities
+        const escapeHtml = (text) => {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        };
+        const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Fetch with Retry
+        const fetchWithRetry = async (url, options, maxRetries = 5) => {
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    const responseText = await response.text();
+                    let result;
+                    try { result = responseText ? JSON.parse(responseText) : {}; } 
+                    catch (e) { throw new Error(`API 格式错误 (HTTP ${response.status})`); }
+                    
+                    if (!response.ok || result.error) {
+                        const errMsg = result.error?.message || result.message || 'API Error';
+                        if ([400, 401, 403].includes(response.status)) {
+                            if (/API key not valid|authentication|API key|Auth/i.test(errMsg)) {
+                                throw new Error("大模型 API Key 无效或未授权，请检查【研报模型配置】中的密钥！");
+                            }
+                            throw new Error(`参数异常: ${errMsg}`);
+                        }
+                        if (i === maxRetries - 1) throw new Error(`请求失败: ${errMsg}`);
+                        throw new Error("Trigger retry");
+                    }
+                    return result;
+                } catch (error) {
+                    if (i === maxRetries - 1 || error.message.includes("无效") || error.message.includes("参数异常")) throw error;
+                }
+                await new Promise(resolve => setTimeout(resolve, delays[i]));
+            }
+        };
+
+        const App = {
+            setup() {
+                // --- State ---
+                const isLoading = ref(true);
+                const authError = ref('');
+                const user = ref(null);
+                const appRole = ref(null);
+                const userName = ref('');
+                const activeTab = ref('dashboard');
+                
+                const loginForm = reactive({ name: '', pwd: '' });
+                const newWLName = ref('');
+                
+                // Settings Object
+                const settings = reactive({
+                    modules: [], coreWebsites: [], passwords: { admin: 'admin123', viewer: 'viewer123' },
+                    whitelistMode: false, whitelist: [], autoRunTime: '08:00',
+                    geminiApiKey: '', deepseekApiKey: '', llmProvider: 'gemini',
+                    deepseekBaseUrl: 'https://api.deepseek.com', deepseekModel: 'deepseek-v4-pro'
+                });
+
+                const reports = ref([]);
+                const todayReport = ref(null);
+                const logs = ref([]);
+                
+                const isGenerating = ref(false);
+                const genProgress = ref(0);
+                const isSaving = ref(false);
+
+                // Derived state
+                const todayStr = new Date().toISOString().split('T')[0];
+                const stats = computed(() => {
+                    const todayStart = new Date().setHours(0,0,0,0);
+                    const todayLogs = logs.value.filter(l => l.timestamp >= todayStart);
+                    return {
+                        uniqueUsers: new Set(todayLogs.map(l => l.userName)).size,
+                        loginsToday: todayLogs.filter(l => l.action.includes('登录')).length
+                    };
+                });
+
+                // ECharts
+                let myChart = null;
+                const renderChart = async () => {
+                    if (activeTab.value !== 'dashboard' || !todayReport.value) return;
+                    await nextTick();
+                    const dom = document.getElementById('mainChart');
+                    if (!dom) return;
+                    if (myChart) myChart.dispose();
+                    myChart = echarts.init(dom);
+                    const data = settings.modules.map(m => {
+                        const r = todayReport.value.moduleData?.find(d => d.moduleId === m.id);
+                        return { name: m.name, value: r?.deconstructedIntents?.length || 0 };
+                    });
+                    myChart.setOption({
+                        tooltip: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 8, borderColor: '#e2e8f0', textStyle: {color: '#1e293b'} },
+                        xAxis: { type: 'category', data: data.map(d=>d.name), axisLabel: { interval: 0, fontSize: 11, color: '#64748b', fontWeight: 'bold' }, axisLine: {lineStyle: {color: '#e2e8f0'}} },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } }, axisLabel: {color: '#64748b'} },
+                        series: [{ data: data.map(d=>d.value), type: 'bar', itemStyle: { color: '#0284c7', borderRadius: [4,4,0,0] }, barMaxWidth: 60 }]
+                    });
+                };
+                watch([activeTab, todayReport], renderChart);
+                window.addEventListener('resize', () => myChart?.resize());
+
+                // Firebase Auth Init
+                onMounted(async () => {
+                    let attempts = 3;
+                    while (attempts > 0) {
+                        try {
+                            const initToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                            if (initToken) await signInWithCustomToken(auth, initToken);
+                            else await signInAnonymously(auth);
+                            break;
+                        } catch (err) {
+                            attempts--;
+                            if (attempts === 0) {
+                                authError.value = "鉴权失败: 网络超时或配置异常，请刷新重试。";
+                                isLoading.value = false;
+                            } else await new Promise(r => setTimeout(r, 1500));
+                        }
+                    }
+                    onAuthStateChanged(auth, u => {
+                        user.value = u;
+                        if (u) loadFirestoreData();
+                    });
+                });
+
+                // Load Data
+                const loadFirestoreData = () => {
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), (snap) => {
+                        if (snap.exists()) {
+                            Object.assign(settings, snap.data());
+                            if (settings.deepseekBaseUrl === 'https://api.deepseek.com/chat/completions') settings.deepseekBaseUrl = 'https://api.deepseek.com';
+                            if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
+                        }
+                        else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), settings);
+                        isLoading.value = false;
+                    });
+                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), (snap) => {
+                        const res = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>new Date(b.date)-new Date(a.date));
+                        reports.value = res;
+                        todayReport.value = res.find(r => r.date === todayStr) || null;
+                    });
+                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), (snap) => {
+                        logs.value = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>b.timestamp-a.timestamp);
+                    });
+                };
+
+                const logAction = async (action, targetName, details = '') => {
+                    const logId = Date.now() + Math.random().toString(36).substr(2, 6);
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', logId), { timestamp: Date.now(), userName: targetName, action, details });
+                };
+
+                const handleLogin = () => {
+                    const name = loginForm.name.trim();
+                    if (!name) return Swal.fire({icon:'error', title:'登录失败', text:'请输入真实姓名'});
+                    if (loginForm.pwd === settings.passwords.admin) {
+                        appRole.value = 'admin'; userName.value = name; logAction('登录系统', name, 'Admin 登入');
+                    } else if (loginForm.pwd === settings.passwords.viewer) {
+                        if (settings.whitelistMode && !settings.whitelist.includes(name)) {
+                            logAction('拦截访问', name, '触发白名单防御');
+                            return Swal.fire({icon:'error', title:'拦截访问', text:'您不在白名单内'});
+                        }
+                        appRole.value = 'viewer'; userName.value = name; logAction('登录系统', name, 'Viewer 登入');
+                    } else {
+                        logAction('验证失败', name, '密码错误');
+                        Swal.fire({icon:'error', title:'密码错误', text:'口令不匹配'});
+                    }
+                };
+
+                const handleLogout = () => {
+                    logAction('退出系统', userName.value, '主动登出');
+                    appRole.value = null; userName.value = ''; loginForm.pwd = '';
+                };
+
+                // Generation
+                const generateDailyReport = async () => {
+                    if (!settings.modules.length) return Swal.fire({icon:'warning', text:'请先配置模块！'});
+                    isGenerating.value = true; genProgress.value = 5;
+                    const timer = setInterval(() => { if(genProgress.value<90) genProgress.value+=Math.floor(Math.random()*8) }, 800);
+                    
+                    try {
+                        let text = "";
+                        
+                        // 【核心修复点】将真实 ID 拼接进提示词中，强制大模型原样返回
+                        const mPrompt = settings.modules.map(m=>`[ID: ${m.id}] 模块:【${m.name}】描述:"${m.description}"`).join('\n');
+                        const wPrompt = settings.coreWebsites.map(w=>`[ID: ${w.id}] 生态:【${w.name}】描述:"${w.description}"`).join('\n');
+
+                        if (settings.llmProvider === 'deepseek') {
+                            const key = settings.deepseekApiKey?.trim().replace(/[^\x00-\x7F]/g, "");
+                            if(!key) throw new Error("DeepSeek 未配置 API Key！");
+                            
+                            let endpoint = settings.deepseekBaseUrl?.trim() || "https://api.deepseek.com";
+                            if (!endpoint.endsWith('/chat/completions')) {
+                                endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
+                            }
+
+                            const p = `你是顶尖商业分析师。今天:${todayStr}。\n基于强大的知识库和推理能力，深度洞察以下板块:\n
+【业务模块】\n${mPrompt}\n
+【核心生态】\n${wPrompt}\n
+【严格指令】
+1. 必须输出合法 JSON，绝对不准留空任何 content 字段！如果无突发新闻，务必基于深度的商业模式或技术趋势写出研报级分析段落。
+2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [ID: xxx] 里的字符(例如 m1, w1 等)，绝对不要自己擅自更改 ID 名称！
+3. 必须提供虚拟但方向正确的 references (sources)。\n
+输出格式化JSON模板：
+{"summary":"...","moduleData":[{"moduleId":"...","deconstructedIntents":["词1"],"content":"...","sentiment":"positive","sources":[{"title":"...","url":"#"}]}],"websiteData":[{"siteId":"...","content":"...","sources":[{"title":"...","url":"#"}]}]}`;
+                            
+                            const res = await fetchWithRetry(endpoint, {
+                                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+                                body: JSON.stringify({ model: settings.deepseekModel || "deepseek-v4-pro", messages:[{role:'user',content:p}], response_format:{type:'json_object'} })
+                            });
+                            text = res.choices?.[0]?.message?.content;
+                        } else {
+                            const key = settings.geminiApiKey?.trim().replace(/[^\x00-\x7F]/g, "");
+                            const p = `你是顶尖商业分析师。今天:${todayStr}。\n调用google_search深入洞察以下板块:\n
+【业务模块】\n${mPrompt}\n
+【核心生态】\n${wPrompt}\n
+【严格指令】
+1. 必须进行网络搜索。绝对不准留空任何 content 字段！无新突发时必须分析长期商业策略或行业技术瓶颈。
+2. 警告：返回的 JSON 中，moduleId 和 siteId 必须原封不动地填写上面给你提供的 [ID: xxx] 里的字符(例如 m1, w1 等)，绝对不要自己擅自更改 ID 名称！
+3. 必须附带真实的 references (sources)。\n`;
+
+                            const schema = { type:"OBJECT", properties:{ summary:{type:"STRING"}, moduleData:{type:"ARRAY",items:{type:"OBJECT",properties:{moduleId:{type:"STRING"},deconstructedIntents:{type:"ARRAY",items:{type:"STRING"}},content:{type:"STRING"},sentiment:{type:"STRING"},sources:{type:"ARRAY",items:{type:"OBJECT",properties:{title:{type:"STRING"},url:{type:"STRING"}}}}}}}, websiteData:{type:"ARRAY",items:{type:"OBJECT",properties:{siteId:{type:"STRING"},content:{type:"STRING"},sources:{type:"ARRAY",items:{type:"OBJECT",properties:{title:{type:"STRING"},url:{type:"STRING"}}}}}}}}, required:["summary","moduleData","websiteData"] };
+                            
+                            const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`, {
+                                method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({ contents:[{parts:[{text:p}]}], tools:[{google_search:{}}], generationConfig:{responseMimeType:"application/json", responseSchema:schema} })
+                            });
+                            text = res.candidates?.[0]?.content?.parts?.[0]?.text;
+                        }
+
+                        if(!text) throw new Error("大模型无返回。");
+                        
+                        let data;
+                        try { data = JSON.parse(text.replace(/```json/g,'').replace(/```/g,'').trim()); } catch(e){ throw new Error("JSON结构损坏！"); }
+                        
+                        clearInterval(timer); genProgress.value = 98;
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', todayStr), {
+                            date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
+                        });
+                        logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
+                        genProgress.value = 100;
+                        setTimeout(() => isGenerating.value = false, 800);
+                        Swal.fire({icon:'success', title:'生成成功', text:'全网深度研报已入档！', timer:2000, showConfirmButton:false});
+
+                    } catch (err) {
+                        clearInterval(timer); isGenerating.value = false; genProgress.value = 0;
+                        logAction('生成异常', userName.value, err.message);
+                        Swal.fire({icon:'error', title:'执行中断', text:err.message});
+                    }
+                };
+
+                // UI Helpers (Enhanced fault tolerance for missing or slightly mismatched IDs)
+                const highlightText = (text, keywords) => {
+                    if (!text || !keywords || !keywords.length) return escapeHtml(text||'');
+                    let res = escapeHtml(text);
+                    [...keywords].sort((a,b)=>b.length-a.length).forEach(k => {
+                        res = res.replace(new RegExp(`(${escapeRegExp(k)})`,'gi'), '<mark class="bg-sky-100 text-sky-800 font-bold px-1 rounded shadow-sm decoration-sky-300 underline underline-offset-4 decoration-2">$1</mark>');
+                    });
+                    return res;
+                };
+                
+                const getModuleData = id => {
+                    if (!todayReport.value || !todayReport.value.moduleData) return null;
+                    return todayReport.value.moduleData.find(d => d.moduleId === id) 
+                        || todayReport.value.moduleData.find(d => id.includes(d.moduleId) || (d.moduleId && d.moduleId.includes(id)));
+                };
+                const getWebsiteData = id => {
+                    if (!todayReport.value || !todayReport.value.websiteData) return null;
+                    return todayReport.value.websiteData.find(d => d.siteId === id)
+                        || todayReport.value.websiteData.find(d => id.includes(d.siteId) || (d.siteId && d.siteId.includes(id)));
+                };
+                
+                const getSentimentClass = s => s==='positive' ? 'bg-green-500/20 text-green-700' : (s==='negative' ? 'bg-red-500/20 text-red-700' : 'bg-slate-200 text-slate-700');
+                const getSentimentText = s => s==='positive' ? 'Positive' : (s==='negative' ? 'Risk Alert' : 'Neutral');
+
+                // Calendar
+                const currentDate = ref(new Date());
+                const currentMonthStr = computed(()=>`${currentDate.value.getFullYear()} . ${String(currentDate.value.getMonth()+1).padStart(2,'0')}`);
+                const changeMonth = d => currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+d, 1);
+                const calendarFirstDay = computed(()=> new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay());
+                const calendarDays = computed(()=> {
+                    const days = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth()+1, 0).getDate();
+                    const rSet = new Set(reports.value.map(r=>r.date));
+                    return Array.from({length:days}, (_,i) => {
+                        const dStr = `${currentDate.value.getFullYear()}-${String(currentDate.value.getMonth()+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
+                        return { dayNum: i+1, dateStr: dStr, hasReport: rSet.has(dStr), isToday: dStr===todayStr };
+                    });
+                });
+                const selectDate = (day) => { todayReport.value = reports.value.find(r=>r.date===day.dateStr); activeTab.value = 'dashboard'; };
+
+                // History
+                const searchQuery = ref('');
+                const historyPage = ref(1);
+                const filteredReports = computed(()=> reports.value.filter(r => r.date.includes(searchQuery.value) || r.summary?.includes(searchQuery.value)));
+                const historyTotalPages = computed(()=> Math.ceil(filteredReports.value.length / 5));
+                const paginatedReports = computed(()=> filteredReports.value.slice((historyPage.value-1)*5, historyPage.value*5));
+                watch(searchQuery, ()=>historyPage.value=1);
+
+                // Logs
+                const logsPage = ref(1);
+                const logsTotalPages = computed(()=> Math.ceil(logs.value.length / 15));
+                const paginatedLogs = computed(()=> logs.value.slice((logsPage.value-1)*15, logsPage.value*15));
+                const formatTime = ts => { const d=new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
+
+                // Settings Admin
+                const addWhitelist = () => { if(newWLName.value.trim() && !settings.whitelist.includes(newWLName.value.trim())) { settings.whitelist.push(newWLName.value.trim()); newWLName.value=''; } };
+                const saveSettings = async () => {
+                    isSaving.value = true;
+                    try {
+                        const payload = JSON.parse(JSON.stringify(settings));
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), payload);
+                        logAction('更新配置', userName.value, '管理员全量保存系统策略');
+                        Swal.fire({icon:'success', title:'生效', text:'AI策略与安防规则已成功部署', timer:1500, showConfirmButton:false});
+                    } catch(e) { Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'}); }
+                    isSaving.value = false;
+                };
+
+                return {
+                    isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
+                    todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
+                    highlightText, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
+                    currentMonthStr, changeMonth, calendarFirstDay, calendarDays, selectDate,
+                    searchQuery, historyPage, historyTotalPages, paginatedReports,
+                    logsPage, logsTotalPages, paginatedLogs, formatTime,
+                    newWLName, addWhitelist, saveSettings
+                };
+            }
+        };
+
+        createApp(App).mount('#app');
+    </script>
+</body>
+</html>
