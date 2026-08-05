@@ -353,7 +353,8 @@
                                 </div>
                                 <div class="p-8 flex-1 flex flex-col">
                                     <h4 class="text-xs font-black text-sky-600 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-slate-100 pb-3"><i class="fas fa-eye text-lg"></i> 报告核心摘要预览</h4>
-                                    <p class="text-slate-600 text-[15px] leading-relaxed text-justify line-clamp-3 font-medium flex-1">{{ report.summary.replace(/<[^>]*>?/gm, '') }}</p>
+                                    <!-- 增加对 null 的安全容错判断 -->
+                                    <p class="text-slate-600 text-[15px] leading-relaxed text-justify line-clamp-3 font-medium flex-1">{{ (report.summary || '暂无摘要内容').replace(/<[^>]*>?/gm, '') }}</p>
                                     <div class="mt-4 text-xs text-slate-400 font-bold flex items-center gap-2">
                                         点击卡片以查阅完整多维深度分析报告 <i class="fas fa-arrow-right text-sky-500"></i>
                                     </div>
@@ -618,6 +619,7 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-insight-dashboard';
 
         const safeAppId = appId.replace(/[.#$\[\]]/g, '_');
+        const SESSION_KEY = `pc_ai_session_${safeAppId}`; // 用于存储会话状态
 
         // Utilities
         const escapeHtml = (text) => {
@@ -680,7 +682,25 @@
                 const isSaving = ref(false);
                 const lastApiError = ref('');
 
-                // 强制使用本地系统的当天日期，防止 UTC 时区错位导致存错地方
+                // 恢复本地会话状态 (有效期 30 分钟)
+                try {
+                    const savedSession = localStorage.getItem(SESSION_KEY);
+                    if (savedSession) {
+                        const sessionData = JSON.parse(savedSession);
+                        // 30分钟 = 1800000 毫秒
+                        if (Date.now() - sessionData.timestamp < 1800000) {
+                            appRole.value = sessionData.appRole;
+                            userName.value = sessionData.userName;
+                            // 更新时间戳，保持活跃
+                            sessionData.timestamp = Date.now();
+                            localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+                        } else {
+                            localStorage.removeItem(SESSION_KEY);
+                        }
+                    }
+                } catch(e) { console.error("会话恢复失败", e); }
+
+                // 强制使用本地系统的当天日期
                 const getLocalTodayStr = () => {
                     const d = new Date();
                     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -740,7 +760,7 @@
                         return;
                     }
 
-                    // 【核心修复：第一层防御】先从 LocalStorage 强行提取本地数据，确保即使断网或数据库拒绝，也能瞬间看到历史配置和内容！
+                    // 【核心修复：第一层防御】先从 LocalStorage 强行提取本地数据
                     try {
                         const localSettings = localStorage.getItem(`pc_ai_settings_${safeAppId}`);
                         if (localSettings) Object.assign(settings, JSON.parse(localSettings));
@@ -776,7 +796,7 @@
                     });
                 });
 
-                // Load Data using Realtime Database (并更新给 LocalStorage)
+                // Load Data using Realtime Database
                 const loadDatabaseData = () => {
                     const settingsPath = dbRef(db, `artifacts/${safeAppId}/settings/config`);
                     onValue(settingsPath, (snap) => {
@@ -844,12 +864,21 @@
                     } else {
                         logAction('验证失败', name, '密码错误');
                         Swal.fire({icon:'error', title:'密码错误', text:'口令不匹配'});
+                        return;
                     }
+                    
+                    // 登录成功后，持久化保存 Session
+                    localStorage.setItem(SESSION_KEY, JSON.stringify({
+                        appRole: appRole.value,
+                        userName: userName.value,
+                        timestamp: Date.now()
+                    }));
                 };
 
                 const handleLogout = () => {
                     logAction('退出系统', userName.value, '主动登出');
                     appRole.value = null; userName.value = ''; loginForm.pwd = '';
+                    localStorage.removeItem(SESSION_KEY);
                 };
 
                 // Generation (重点重构区：极强提示词保证字数和详细度)
@@ -1058,7 +1087,8 @@ ${wPrompt}
                 const filteredReports = computed(()=> {
                     return reports.value.filter(r => {
                         const matchDate = r.date && r.date.includes(searchQuery.value);
-                        const matchSummary = r.summary && r.summary.includes(searchQuery.value);
+                        // 强制进行安全类型校验
+                        const matchSummary = r.summary && typeof r.summary === 'string' && r.summary.includes(searchQuery.value);
                         return matchDate || matchSummary;
                     });
                 });
