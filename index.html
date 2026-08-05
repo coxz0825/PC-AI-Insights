@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>平板与PC信息洞察平台</title>
     
-    <!-- 引入分离的外部配置文件 (即使没有也会正常运行) -->
+    <!-- 引入分离的外部配置文件 -->
     <script src="./config.js" onerror="console.warn('未检测到本地 config.js，将使用内置配置')"></script>
 
     <!-- Tailwind CSS -->
@@ -44,9 +44,11 @@
 
         <!-- 全局 Loading / 错误界面 -->
         <div v-if="isLoading" class="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-center justify-center bg-cubes text-white">
-            <i class="fas fa-circle-notch fa-spin fa-3x text-sky-500 mb-6"></i>
-            <h2 class="text-xl font-bold tracking-widest">系统环境装载中...</h2>
-            <p v-if="authError" class="mt-4 text-amber-200 text-sm max-w-lg text-center px-6 bg-slate-800/80 py-4 rounded-lg leading-relaxed border border-slate-700 shadow-xl" v-html="authError"></p>
+            <i v-if="!isConfigError" class="fas fa-circle-notch fa-spin fa-3x text-sky-500 mb-6"></i>
+            <i v-else class="fas fa-exclamation-triangle fa-3x text-amber-500 mb-6"></i>
+            
+            <h2 class="text-xl font-bold tracking-widest">{{ isConfigError ? '系统初始化阻断' : '环境初始化中...' }}</h2>
+            <p v-if="authError" class="mt-4 text-red-200 text-sm max-w-lg text-center px-6 bg-slate-800/80 py-4 rounded-lg leading-relaxed border border-slate-700 shadow-xl" v-html="authError"></p>
         </div>
 
         <!-- 登录界面 -->
@@ -77,7 +79,7 @@
                     </div>
                     
                     <div v-if="cloudStatus === 'error'" class="text-xs text-red-500 font-bold text-center mt-2 bg-red-50 py-2 rounded border border-red-100">
-                        <i class="fas fa-exclamation-triangle"></i> 云端连接断开，请使用默认密码 viewer123 或 admin123 登入。
+                        <i class="fas fa-exclamation-triangle"></i> 云端连接受限，正尝试离线环境登入。
                     </div>
 
                     <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-lg shadow-lg transition-all uppercase tracking-widest text-sm mt-4">
@@ -108,7 +110,8 @@
                     <button @click="activeTab = 'calendar'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'calendar' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
                         <i class="fas fa-calendar-alt w-5 text-center"></i><span class="text-sm tracking-wide">行业日历归档</span>
                     </button>
-                    <button @click="activeTab = 'history'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'history' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
+                    <!-- 历史数据库 (如后续有需要可自行改 v-if="true" 开启) -->
+                    <button v-if="false" @click="activeTab = 'history'" :class="['w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold', activeTab === 'history' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white']">
                         <i class="fas fa-database w-5 text-center"></i><span class="text-sm tracking-wide">历史数据库</span>
                     </button>
                     
@@ -338,48 +341,7 @@
                     </div>
 
                     <!-- 3. 历史记录 (History) -->
-                    <div v-else-if="activeTab === 'history'" class="space-y-8 animate-[fadeIn_0.5s_ease-out] max-w-5xl mx-auto">
-                        <div class="bg-slate-900 p-8 rounded-xl shadow-xl border border-slate-800 text-white">
-                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                <div>
-                                    <h2 class="text-2xl font-black flex items-center gap-3 tracking-wide"><i class="fas fa-database text-sky-400"></i> 全局研报检索系统</h2>
-                                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">Global Search Engine</p>
-                                </div>
-                                <div class="relative w-full md:w-[400px]">
-                                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
-                                    <input type="text" v-model="searchQuery" placeholder="输入宏观关键字或日期查询..." class="w-full pl-12 pr-4 py-3.5 bg-slate-800/80 border border-slate-700 rounded-lg focus:border-sky-500 outline-none font-bold text-sm text-white placeholder-slate-500 transition-all shadow-inner">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="space-y-6">
-                            <div v-if="filteredReports.length === 0" class="text-center py-24 bg-white rounded-xl border border-slate-200 shadow-sm">
-                                <i class="fas fa-folder-open text-5xl text-slate-200 mb-4 block"></i>
-                                <p class="text-slate-500 font-bold text-lg">资料库中未检索到相关存档记录。</p>
-                            </div>
-                            <div v-else v-for="report in paginatedReports" :key="report.id" class="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row overflow-hidden group hover:shadow-md transition-all cursor-pointer" @click="todayReport = report; activeTab = 'dashboard'">
-                                <div class="md:w-56 bg-slate-50 border-r border-slate-200 p-6 flex flex-col justify-center items-center text-center group-hover:bg-sky-50 transition-colors">
-                                    <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Publish Date</div>
-                                    <div class="text-2xl font-black text-slate-800 hl-date">{{ report.date }}</div>
-                                    <div class="mt-4 bg-sky-600 text-white text-[10px] font-black px-4 py-1.5 rounded uppercase shadow-sm flex items-center gap-2"><i class="fas fa-check-circle"></i> 已归档</div>
-                                </div>
-                                <div class="p-8 flex-1 flex flex-col">
-                                    <h4 class="text-xs font-black text-sky-600 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-slate-100 pb-3"><i class="fas fa-eye text-lg"></i> 报告核心摘要预览</h4>
-                                    <!-- 增加对 null/对象 的绝对安全强制字符串转换 -->
-                                    <p class="text-slate-600 text-[15px] leading-relaxed text-justify line-clamp-3 font-medium flex-1">{{ String(report.summary || '暂无摘要内容').replace(/<[^>]*>?/gm, '') }}</p>
-                                    <div class="mt-4 text-xs text-slate-400 font-bold flex items-center gap-2">
-                                        点击卡片以查阅完整多维深度分析报告 <i class="fas fa-arrow-right text-sky-500"></i>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-if="historyTotalPages > 1" class="flex justify-center items-center gap-4 mt-8 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                            <button @click="historyPage--" :disabled="historyPage === 1" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition-all"><i class="fas fa-chevron-left w-5"></i></button>
-                            <span class="text-sm font-black text-slate-700 tracking-widest px-4">PAGE {{ historyPage }} OF {{ historyTotalPages }}</span>
-                            <button @click="historyPage++" :disabled="historyPage === historyTotalPages" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition-all"><i class="fas fa-chevron-right w-5"></i></button>
-                        </div>
-                    </div>
+                    <!-- 历史库暂时隐藏，按要求移除该区块的渲染代码以防止白屏，侧边栏也已关闭 -->
 
                     <!-- 4. 设置 (Settings - Admin) -->
                     <div v-else-if="activeTab === 'settings' && appRole === 'admin'" class="max-w-5xl mx-auto space-y-8 animate-[fadeIn_0.5s_ease-out] pb-10">
@@ -800,29 +762,26 @@
                         } catch (err) {
                             attempts--;
                             if (attempts === 0) {
-                                authError.value = "数据库鉴权异常。但这不影响您的本地缓存使用，您可以强行刷新或者修改数据库 Rules。";
-                                isLoading.value = false;
-                                cloudStatus.value = 'error';
-                            } else await new Promise(r => setTimeout(r, 1500));
+                                console.warn("Firebase 匿名验证未开启，尝试跳过验证直接连接数据库...");
+                            } else await new Promise(r => setTimeout(r, 1000));
                         }
                     }
                     
                     onAuthStateChanged(auth, u => {
                         user.value = u;
-                        if (u) {
-                            // 监听 Firebase 底层的连接状态
-                            const connectedRef = dbRef(db, ".info/connected");
-                            onValue(connectedRef, (snap) => {
-                                if (snap.val() === true) {
-                                    cloudStatus.value = 'connected';
-                                } else {
-                                    // 只有在不是明确报错的情况下才设为 connecting
-                                    if(cloudStatus.value !== 'error') cloudStatus.value = 'connecting';
-                                }
-                            });
-                            loadDatabaseData();
+                    });
+
+                    // 霸王硬上弓：无论 Auth 成功还是报错(因为未开匿名登录)，只要数据库 rules 设为 true，强行去连接读写！
+                    const connectedRef = dbRef(db, ".info/connected");
+                    onValue(connectedRef, (snap) => {
+                        if (snap.val() === true) {
+                            cloudStatus.value = 'connected';
+                            authError.value = ''; 
+                        } else {
+                            if(cloudStatus.value !== 'error') cloudStatus.value = 'connecting';
                         }
                     });
+                    loadDatabaseData();
                 });
 
                 // Load Data using Realtime Database
@@ -838,9 +797,9 @@
                         }
                         isLoading.value = false;
                     }, (err) => {
-                        console.warn("DB Setting read blocked by rules, using local fallback.", err);
+                        console.error("DB读取被阻断:", err);
                         isLoading.value = false;
-                        cloudStatus.value = 'error'; // 明确标记为云端阻断错误
+                        cloudStatus.value = 'error'; 
                     });
 
                     const reportsPath = dbRef(db, `artifacts/${safeAppId}/reports`);
