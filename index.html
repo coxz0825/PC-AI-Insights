@@ -5,23 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>平板与PC信息洞察平台</title>
     
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS (极速节点) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     
-    <!-- ECharts -->
+    <!-- ECharts (极速节点) -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     
-    <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- SweetAlert2 (极速节点) -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
     
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
-        [v-cloak] { display: none; }
+        [v-cloak] { display: none !important; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f8fafc; }
         .bg-cubes { background-image: url('https://www.transparenttextures.com/patterns/cubes.png'); background-attachment: fixed; }
     </style>
@@ -29,11 +29,13 @@
 <body>
     <div id="app" v-cloak class="h-screen flex w-full">
 
-        <!-- 全局 Loading -->
+        <!-- 全局 Loading / 错误界面 -->
         <div v-if="isLoading" class="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-center justify-center bg-cubes text-white">
-            <i class="fas fa-circle-notch fa-spin fa-3x text-sky-500 mb-6"></i>
-            <h2 class="text-xl font-bold tracking-widest">环境初始化中...</h2>
-            <p v-if="authError" class="mt-4 text-red-400 text-sm max-w-md text-center px-4 bg-red-900/30 py-2 rounded">{{ authError }}</p>
+            <i v-if="!isConfigError" class="fas fa-circle-notch fa-spin fa-3x text-sky-500 mb-6"></i>
+            <i v-else class="fas fa-exclamation-triangle fa-3x text-amber-500 mb-6"></i>
+            
+            <h2 class="text-xl font-bold tracking-widest">{{ isConfigError ? '系统初始化阻断' : '环境初始化中...' }}</h2>
+            <p v-if="authError" class="mt-4 text-red-200 text-sm max-w-lg text-center px-6 bg-slate-800/80 py-4 rounded-lg leading-relaxed border border-slate-700 shadow-xl" v-html="authError"></p>
         </div>
 
         <!-- 登录界面 -->
@@ -548,15 +550,38 @@
 
     <!-- Vue 3 CDN (浏览器原生 ESM 版本) -->
     <script type="module">
-        import { createApp, ref, reactive, computed, onMounted, watch, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+        import { createApp, ref, reactive, computed, onMounted, watch, nextTick } from 'https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.esm-browser.prod.js';
         
         // --- Firebase Modules via CDN ---
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
         import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
+        // =======================================================================
+        // ⚠️ 本地部署必读：如果您将此文件下载到本地双击运行，请替换下方的配置！
+        // =======================================================================
+        const localFirebaseConfig = {
+            // =====================================================================
+            // 🚨🚨 在这里填入您自己的 Firebase Config 对象才能脱离在线预览环境单独使用！
+            // =====================================================================
+            // apiKey: "AIzaSy...",
+            // authDomain: "your-project.firebaseapp.com",
+            // projectId: "your-project",
+            // storageBucket: "your-project.appspot.com",
+            // messagingSenderId: "123456789",
+            // appId: "1:123456789:web:abcdef"
+        };
+
         // Firebase Setup
-        const fbConfigObj = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        let fbConfigObj = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : localFirebaseConfig;
+        
+        let isConfigError = false;
+        if (!fbConfigObj || Object.keys(fbConfigObj).length === 0) {
+            isConfigError = true;
+            // 注入一个假配置防止初始化时直接崩溃导致白屏
+            fbConfigObj = { apiKey: "mock", projectId: "mock", appId: "1:1:web:1" };
+        }
+
         const firebaseApp = initializeApp(fbConfigObj);
         const auth = getAuth(firebaseApp);
         const db = getFirestore(firebaseApp);
@@ -664,6 +689,12 @@
 
                 // Firebase Auth Init
                 onMounted(async () => {
+                    if (isConfigError) {
+                        isLoading.value = true;
+                        authError.value = "⚠️ <b>检测到本地离线/Vercel环境</b><br/><br/>您当前运行的代码缺少了数据库配置，因此阻断了初始化。<br/><br/><b>解决方案：</b><br/>请使用代码编辑器打开此 <code>index.html</code> 文件，在第 <b>358</b> 行的 <code>localFirebaseConfig</code> 中填入您在 Firebase 控制台申请的真实 Config 对象信息，重新上传部署即可恢复！";
+                        return; // 终止后续操作，保留错误信息
+                    }
+
                     let attempts = 3;
                     while (attempts > 0) {
                         try {
@@ -742,7 +773,6 @@
                     try {
                         let text = "";
                         
-                        // 【核心修复点】将真实 ID 拼接进提示词中，强制大模型原样返回
                         const mPrompt = settings.modules.map(m=>`[ID: ${m.id}] 模块:【${m.name}】描述:"${m.description}"`).join('\n');
                         const wPrompt = settings.coreWebsites.map(w=>`[ID: ${w.id}] 生态:【${w.name}】描述:"${w.description}"`).join('\n');
 
@@ -878,6 +908,7 @@
 
                 return {
                     isLoading, authError, appRole, userName, activeTab, loginForm, handleLogin, handleLogout,
+                    isConfigError, // 导出错误标记
                     todayStr, stats, settings, reports, todayReport, logs, isGenerating, genProgress, isSaving, generateDailyReport,
                     highlightText, getModuleData, getWebsiteData, getSentimentClass, getSentimentText,
                     currentMonthStr, changeMonth, calendarFirstDay, calendarDays, selectDate,
