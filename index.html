@@ -555,7 +555,7 @@
         // --- Firebase Modules via CDN ---
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+        import { getDatabase, ref as dbRef, onValue, set, update } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
         // =======================================================================
         // ⚠️ 本地部署必读：如果您将此文件下载到本地双击运行，请替换下方的配置！
@@ -563,6 +563,7 @@
         const localFirebaseConfig = {
             apiKey: "AIzaSyALayTmut_Qt5HHfeDwK-IxUEzLxFujIK8",
             authDomain: "pc-ai-insights.firebaseapp.com",
+            databaseURL: "https://pc-ai-insights-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "pc-ai-insights",
             storageBucket: "pc-ai-insights.firebasestorage.app",
             messagingSenderId: "676319801033",
@@ -582,8 +583,12 @@
 
         const firebaseApp = initializeApp(fbConfigObj);
         const auth = getAuth(firebaseApp);
-        const db = getFirestore(firebaseApp);
+        const db = getDatabase(firebaseApp);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ai-insight-dashboard';
+        
+        // 核心修复点：Firebase Realtime Database 路径严格禁止包含 ".", "#", "$", "[", "]" 等字符
+        // 如果是在沙盒环境中，appId 可能会包含 "index.html" 导致包含 "." 字符而崩溃。
+        const safeAppId = appId.replace(/[.#$\[\]]/g, '_');
 
         // Utilities
         const escapeHtml = (text) => {
@@ -710,34 +715,42 @@
                     }
                     onAuthStateChanged(auth, u => {
                         user.value = u;
-                        if (u) loadFirestoreData();
+                        if (u) loadDatabaseData();
                     });
                 });
 
-                // Load Data
-                const loadFirestoreData = () => {
-                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), (snap) => {
-                        if (snap.exists()) {
-                            Object.assign(settings, snap.data());
+                // Load Data using Realtime Database
+                const loadDatabaseData = () => {
+                    const settingsPath = dbRef(db, `artifacts/${safeAppId}/settings/config`);
+                    onValue(settingsPath, (snap) => {
+                        const data = snap.val();
+                        if (data) {
+                            Object.assign(settings, data);
                             if (settings.deepseekBaseUrl === 'https://api.deepseek.com/chat/completions') settings.deepseekBaseUrl = 'https://api.deepseek.com';
                             if (settings.deepseekModel === 'deepseek-chat') settings.deepseekModel = 'deepseek-v4-pro';
                         }
-                        else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), settings);
+                        else set(settingsPath, settings);
                         isLoading.value = false;
                     });
-                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), (snap) => {
-                        const res = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+                    const reportsPath = dbRef(db, `artifacts/${safeAppId}/reports`);
+                    onValue(reportsPath, (snap) => {
+                        const data = snap.val() || {};
+                        const res = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>new Date(b.date)-new Date(a.date));
                         reports.value = res;
                         todayReport.value = res.find(r => r.date === todayStr) || null;
                     });
-                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), (snap) => {
-                        logs.value = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>b.timestamp-a.timestamp);
+
+                    const logsPath = dbRef(db, `artifacts/${safeAppId}/logs`);
+                    onValue(logsPath, (snap) => {
+                        const data = snap.val() || {};
+                        logs.value = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b)=>b.timestamp-a.timestamp);
                     });
                 };
 
                 const logAction = async (action, targetName, details = '') => {
                     const logId = Date.now() + Math.random().toString(36).substr(2, 6);
-                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', logId), { timestamp: Date.now(), userName: targetName, action, details });
+                    await set(dbRef(db, `artifacts/${safeAppId}/logs/${logId}`), { timestamp: Date.now(), userName: targetName, action, details });
                 };
 
                 const handleLogin = () => {
@@ -823,7 +836,7 @@
                         try { data = JSON.parse(text.replace(/```json/g,'').replace(/```/g,'').trim()); } catch(e){ throw new Error("JSON结构损坏！"); }
                         
                         clearInterval(timer); genProgress.value = 98;
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', todayStr), {
+                        await set(dbRef(db, `artifacts/${safeAppId}/reports/${todayStr}`), {
                             date: todayStr, timestamp: Date.now(), summary: data.summary, moduleData: data.moduleData||[], websiteData: data.websiteData||[]
                         });
                         logAction('生成研报', userName.value, `成功生成 ${todayStr} 洞察`);
@@ -898,8 +911,7 @@
                     try {
                         const payload = JSON.parse(JSON.stringify(settings));
                         
-                        // 采用 setDoc 配合 merge: true，并增加超时机制防止假死
-                        const saveTask = setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), payload, { merge: true });
+                        const saveTask = update(dbRef(db, `artifacts/${safeAppId}/settings/config`), payload);
                         
                         await Promise.race([
                             saveTask,
@@ -911,7 +923,7 @@
                     } catch(e) { 
                         console.error("保存失败:", e);
                         if (e.message === "TIMEOUT") {
-                            Swal.fire({icon:'error', title:'保存请求超时', html:'可能是以下原因导致：<br/>1. 未在 Firebase 控制台点击<b>创建 Firestore 数据库</b><br/>2. 网络被拦截，无法连接数据库'});
+                            Swal.fire({icon:'error', title:'保存请求超时', html:'网络被拦截，或数据库规则拒绝写入'});
                         } else {
                             Swal.fire({icon:'error', text:'保存失败(网络或权限异常)'});
                         }
